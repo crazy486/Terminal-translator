@@ -31,6 +31,21 @@ public sealed class WindowsTerminalLauncher
         string nonce,
         string workingDirectory)
     {
+        ProcessStartInfo startInfo = CreateStartInfo(executablePath, sessionId, nonce, workingDirectory);
+        Process? process = Process.Start(startInfo);
+        if (process is null)
+        {
+            throw new InvalidOperationException("Windows Terminal did not accept the launch request.");
+        }
+    }
+
+    public static ProcessStartInfo CreateStartInfo(
+        string executablePath,
+        string sessionId,
+        string nonce,
+        string workingDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nonce);
         ProcessStartInfo startInfo = new("wt.exe")
         {
             UseShellExecute = false,
@@ -43,10 +58,15 @@ public sealed class WindowsTerminalLauncher
 
         startInfo.Environment["TT_SESSION_ID"] = sessionId;
         startInfo.Environment["TT_SESSION_NONCE"] = nonce;
-        Process? process = Process.Start(startInfo);
-        if (process is null)
+        string? executableDirectory = Path.GetDirectoryName(Path.GetFullPath(executablePath));
+        if (!string.IsNullOrWhiteSpace(executableDirectory))
         {
-            throw new InvalidOperationException("Windows Terminal did not accept the launch request.");
+            string inheritedPath = startInfo.Environment.TryGetValue("PATH", out string? path)
+                ? path ?? string.Empty
+                : Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+            startInfo.Environment["PATH"] = executableDirectory + Path.PathSeparator + inheritedPath;
         }
+
+        return startInfo;
     }
 }

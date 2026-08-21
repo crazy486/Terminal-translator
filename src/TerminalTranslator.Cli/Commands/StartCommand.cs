@@ -54,7 +54,7 @@ public static class StartCommand
             try
             {
                 terminalLauncher.Launch(
-                    Environment.ProcessPath ?? "tt.exe",
+                    ResolveExecutablePath(),
                     sessionId,
                     nonce,
                     Path.GetFullPath(directory));
@@ -69,5 +69,17 @@ public static class StartCommand
         });
 
         return command;
+    }
+
+    private static string ResolveExecutablePath()
+    {
+        string processPath = Environment.ProcessPath ?? "tt.exe";
+        if (!string.Equals(Path.GetFileNameWithoutExtension(processPath), "dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            return processPath;
+        }
+
+        string appHost = Path.Combine(AppContext.BaseDirectory, "tt.exe");
+        return File.Exists(appHost) ? appHost : processPath;
     }
 }

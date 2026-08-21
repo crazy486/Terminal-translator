@@ -1,5 +1,10 @@
 <Project Sdk="MSTest.Sdk/4.2.3">
   <ItemGroup>
     <ProjectReference Include="..\..\src\TerminalTranslator.Windows\TerminalTranslator.Windows.csproj" />
+    <ProjectReference Include="Fixtures\InteractiveProbe\InteractiveProbe.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Fixtures\InteractiveProbe\**\*.cs" />
   </ItemGroup>
 </Project>

@@ -52,9 +52,10 @@ public static class ConfigureCommand
                 await standardError.WriteLineAsync(exception.Message).ConfigureAwait(false);
                 return 4;
             }
-            catch (IOException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                await standardError.WriteLineAsync("Unable to write provider settings.").ConfigureAwait(false);
+                await standardError.WriteLineAsync(
+                    $"Unable to write provider settings at '{settingsStore.SettingsPath}': {exception.Message}").ConfigureAwait(false);
                 return 7;
             }
         });

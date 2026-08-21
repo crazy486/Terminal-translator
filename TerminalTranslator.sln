@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalTranslator.Windows.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalTranslator.Cli.Tests", "tests\TerminalTranslator.Cli.Tests\TerminalTranslator.Cli.Tests.csproj", "{45F3373A-61AD-4D48-A8C5-0C1D84B6D45E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InteractiveProbe", "tests\TerminalTranslator.Windows.Tests\Fixtures\InteractiveProbe\InteractiveProbe.csproj", "{6C79553A-9D6E-4E37-A364-3D0BCB6E2782}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -45,5 +47,9 @@ Global
 		{45F3373A-61AD-4D48-A8C5-0C1D84B6D45E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{45F3373A-61AD-4D48-A8C5-0C1D84B6D45E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{45F3373A-61AD-4D48-A8C5-0C1D84B6D45E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6C79553A-9D6E-4E37-A364-3D0BCB6E2782}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C79553A-9D6E-4E37-A364-3D0BCB6E2782}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C79553A-9D6E-4E37-A364-3D0BCB6E2782}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C79553A-9D6E-4E37-A364-3D0BCB6E2782}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -16,17 +16,26 @@ public sealed class MinimalEnableRequestSender(string pipeName) : IEnableRequest
 {
     public async Task<bool> SendAsync(ControlRequestMessage request, CancellationToken cancellationToken)
     {
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(2));
         await using NamedPipeClientStream pipe = new(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        await pipe.ConnectAsync(1000, cancellationToken).ConfigureAwait(false);
-        byte[] bytes = Encoding.UTF8.GetBytes(
-            JsonSerializer.Serialize(request, SessionJsonContext.Default.ControlRequestMessage) + "\n");
-        await pipe.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
-        await pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
-        string responseLine = await EventPipeServer.ReadBoundedLineAsync(pipe, cancellationToken).ConfigureAwait(false);
-        ControlResultMessage? response = JsonSerializer.Deserialize(
-            responseLine,
-            SessionJsonContext.Default.ControlResultMessage);
-        return response is { Ok: true, State: "enabled" };
+        try
+        {
+            await pipe.ConnectAsync(1000, deadline.Token).ConfigureAwait(false);
+            byte[] bytes = Encoding.UTF8.GetBytes(
+                JsonSerializer.Serialize(request, SessionJsonContext.Default.ControlRequestMessage) + "\n");
+            await pipe.WriteAsync(bytes, deadline.Token).ConfigureAwait(false);
+            await pipe.FlushAsync(deadline.Token).ConfigureAwait(false);
+            string responseLine = await EventPipeServer.ReadBoundedLineAsync(pipe, deadline.Token).ConfigureAwait(false);
+            ControlResultMessage? response = JsonSerializer.Deserialize(
+                responseLine,
+                SessionJsonContext.Default.ControlResultMessage);
+            return response is { Ok: true, State: "enabled" };
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("The session host did not answer the enable request.", exception);
+        }
     }
 }
 
@@ -79,7 +88,7 @@ public static class OnCommand
                 return 0;
             }
 
-            string pipeName = $"tt-{sessionId}-{nonce[..Math.Min(12, nonce.Length)]}-control";
+            string pipeName = SessionPipeNames.Control(sessionId, nonce);
             IEnableRequestSender sender = senderFactory?.Invoke(sessionId, nonce) ?? new MinimalEnableRequestSender(pipeName);
             try
             {

@@ -29,15 +29,18 @@ public sealed class ProviderSettingsStore
         string temporaryPath = Path.Combine(SettingsDirectory, $".{FileName}.{Guid.NewGuid():N}.tmp");
         try
         {
-            await using FileStream stream = new(
+            await using (FileStream stream = new(
                 temporaryPath,
                 FileMode.CreateNew,
                 FileAccess.Write,
                 FileShare.None,
                 4096,
-                FileOptions.Asynchronous | FileOptions.WriteThrough);
-            await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             File.Move(temporaryPath, SettingsPath, overwrite: true);
         }
         finally
