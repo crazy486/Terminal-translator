@@ -1,0 +1,5 @@
+<Project Sdk="MSTest.Sdk/4.2.3">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TerminalTranslator.Core\TerminalTranslator.Core.csproj" />
+  </ItemGroup>
+</Project>

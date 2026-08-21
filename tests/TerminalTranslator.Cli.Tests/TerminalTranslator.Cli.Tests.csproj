@@ -1,0 +1,10 @@
+<Project Sdk="MSTest.Sdk/4.2.3">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TerminalTranslator.Cli\TerminalTranslator.Cli.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\TerminalTranslator.Core.Tests\Fixtures\TranslationCorpus.json"
+          Link="Fixtures\TranslationCorpus.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

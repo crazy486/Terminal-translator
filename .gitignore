@@ -1,0 +1,27 @@
+# .NET build output
+bin/
+obj/
+artifacts/
+packages/
+TestResults/
+coverage/
+*.user
+*.suo
+*.nupkg
+
+# Credentials and local settings
+.env
+.env.*
+!.env.example
+provider-settings.json
+*.key
+*.pem
+
+# Editors and operating systems
+.vs/
+.vscode/
+.idea/
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db

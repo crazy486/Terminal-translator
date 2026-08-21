@@ -21,11 +21,11 @@ an incremental slice.
 
 **Purpose**: Initialize the .NET 10 solution, projects, dependency versions, and repository defaults.
 
-- [ ] T001 Create the .NET 10 SDK pin and shared compiler/test properties in global.json and Directory.Build.props
-- [ ] T002 Create TerminalTranslator.sln and the three production projects in src/TerminalTranslator.Core/TerminalTranslator.Core.csproj, src/TerminalTranslator.Windows/TerminalTranslator.Windows.csproj, and src/TerminalTranslator.Cli/TerminalTranslator.Cli.csproj with the references defined in plan.md
-- [ ] T003 [P] Create MSTest projects and production-project references in tests/TerminalTranslator.Core.Tests/TerminalTranslator.Core.Tests.csproj, tests/TerminalTranslator.Windows.Tests/TerminalTranslator.Windows.Tests.csproj, and tests/TerminalTranslator.Cli.Tests/TerminalTranslator.Cli.Tests.csproj
-- [ ] T004 Add stable System.CommandLine 2.0.x and win-x64 single-file publish defaults without trimming to src/TerminalTranslator.Cli/TerminalTranslator.Cli.csproj
-- [ ] T005 [P] Add C# formatting, nullable, analyzer, build-artifact, and secret-file exclusions in .editorconfig and .gitignore
+- [X] T001 Create the .NET 10 SDK pin and shared compiler/test properties in global.json and Directory.Build.props
+- [X] T002 Create TerminalTranslator.sln and the three production projects in src/TerminalTranslator.Core/TerminalTranslator.Core.csproj, src/TerminalTranslator.Windows/TerminalTranslator.Windows.csproj, and src/TerminalTranslator.Cli/TerminalTranslator.Cli.csproj with the references defined in plan.md
+- [X] T003 [P] Create MSTest projects and production-project references in tests/TerminalTranslator.Core.Tests/TerminalTranslator.Core.Tests.csproj, tests/TerminalTranslator.Windows.Tests/TerminalTranslator.Windows.Tests.csproj, and tests/TerminalTranslator.Cli.Tests/TerminalTranslator.Cli.Tests.csproj
+- [X] T004 Add stable System.CommandLine 2.0.x and win-x64 single-file publish defaults without trimming to src/TerminalTranslator.Cli/TerminalTranslator.Cli.csproj
+- [X] T005 [P] Add C# formatting, nullable, analyzer, build-artifact, and secret-file exclusions in .editorconfig and .gitignore
 
 **Checkpoint**: `dotnet restore` can resolve the empty solution using only the approved production
 and test dependency budget.
@@ -38,14 +38,14 @@ and test dependency budget.
 
 **CRITICAL**: No user-story implementation starts until this phase passes its build checkpoint.
 
-- [ ] T006 [P] Create session, pane, segment, translation, privacy, and status value types and enums from data-model.md in src/TerminalTranslator.Core/Models/SessionModels.cs and src/TerminalTranslator.Core/Models/TranslationModels.cs
-- [ ] T007 [P] Define provider-neutral request, result, normalized error, and ITranslationProvider contracts in src/TerminalTranslator.Core/Translation/ProviderModels.cs and src/TerminalTranslator.Core/Translation/ITranslationProvider.cs
-- [ ] T008 [P] Define injectable monotonic clock, delay, and content-free diagnostic interfaces in src/TerminalTranslator.Core/Sessions/IClock.cs and src/TerminalTranslator.Core/Sessions/IDiagnosticSink.cs
-- [ ] T009 [P] Define version-1 JSON Lines IPC DTOs and source-generated JSON metadata in src/TerminalTranslator.Windows/Ipc/SessionMessages.cs and src/TerminalTranslator.Windows/Ipc/SessionJsonContext.cs
-- [ ] T010 [P] Add source-generated Kernel32 ConPTY declarations, structs, and SafeHandle ownership in src/TerminalTranslator.Windows/ConPty/NativeMethods.cs and src/TerminalTranslator.Windows/ConPty/SafePseudoConsoleHandle.cs
-- [ ] T011 [P] Create reusable fake clock, fake provider, provider spy, and temporary settings helpers in tests/TerminalTranslator.Core.Tests/TestDoubles/Fakes.cs and tests/TerminalTranslator.Cli.Tests/TestDoubles/TestHttpMessageHandler.cs
-- [ ] T012 Build the explicit composition root and public/internal command skeleton without business logic in src/TerminalTranslator.Cli/Program.cs and src/TerminalTranslator.Cli/Commands/CommandFactory.cs
-- [ ] T013 Validate project references, analyzers, nullable warnings, and empty test discovery with TerminalTranslator.sln
+- [X] T006 [P] Create session, pane, segment, translation, privacy, and status value types and enums from data-model.md in src/TerminalTranslator.Core/Models/SessionModels.cs and src/TerminalTranslator.Core/Models/TranslationModels.cs
+- [X] T007 [P] Define provider-neutral request, result, normalized error, and ITranslationProvider contracts in src/TerminalTranslator.Core/Translation/ProviderModels.cs and src/TerminalTranslator.Core/Translation/ITranslationProvider.cs
+- [X] T008 [P] Define injectable monotonic clock, delay, and content-free diagnostic interfaces in src/TerminalTranslator.Core/Sessions/IClock.cs and src/TerminalTranslator.Core/Sessions/IDiagnosticSink.cs
+- [X] T009 [P] Define version-1 JSON Lines IPC DTOs and source-generated JSON metadata in src/TerminalTranslator.Windows/Ipc/SessionMessages.cs and src/TerminalTranslator.Windows/Ipc/SessionJsonContext.cs
+- [X] T010 [P] Add source-generated Kernel32 ConPTY declarations, structs, and SafeHandle ownership in src/TerminalTranslator.Windows/ConPty/NativeMethods.cs and src/TerminalTranslator.Windows/ConPty/SafePseudoConsoleHandle.cs
+- [X] T011 [P] Create reusable fake clock, fake provider, provider spy, and temporary settings helpers in tests/TerminalTranslator.Core.Tests/TestDoubles/Fakes.cs and tests/TerminalTranslator.Cli.Tests/TestDoubles/TestHttpMessageHandler.cs
+- [X] T012 Build the explicit composition root and public/internal command skeleton without business logic in src/TerminalTranslator.Cli/Program.cs and src/TerminalTranslator.Cli/Commands/CommandFactory.cs
+- [X] T013 Validate project references, analyzers, nullable warnings, and empty test discovery with TerminalTranslator.sln
 
 **Checkpoint**: The solution builds with warnings treated as errors and each test project is
 discoverable without network access.
@@ -63,26 +63,26 @@ the program-pane bytes remain identical and low-value text is skipped.
 
 ### Tests for User Story 1
 
-- [ ] T014 [P] [US1] Add failing incremental UTF-8, basic SGR, CR/LF, indentation, and logical-block extraction tests in tests/TerminalTranslator.Core.Tests/Unit/VtTextExtractorTests.cs
-- [ ] T015 [P] [US1] Add failing useful-English, Chinese, code, command, path, version, and priority classification tests in tests/TerminalTranslator.Core.Tests/Unit/EnglishCandidateClassifierTests.cs
-- [ ] T016 [P] [US1] Add failing chat-completion request, response, cancellation, credential-header, and adapter-swap contract tests in tests/TerminalTranslator.Cli.Tests/Contract/TranslationProviderContractTests.cs
-- [ ] T017 [P] [US1] Add failing translation/status event formatting and no-persistence tests in tests/TerminalTranslator.Cli.Tests/Contract/CompanionRendererContractTests.cs
-- [ ] T018 [P] [US1] Add a failing simulated-stream basic translation journey with fake provider and in-memory event sink in tests/TerminalTranslator.Core.Tests/Integration/BasicTranslationJourneyTests.cs
+- [X] T014 [P] [US1] Add failing incremental UTF-8, basic SGR, CR/LF, indentation, and logical-block extraction tests in tests/TerminalTranslator.Core.Tests/Unit/VtTextExtractorTests.cs
+- [X] T015 [P] [US1] Add failing useful-English, Chinese, code, command, path, version, and priority classification tests in tests/TerminalTranslator.Core.Tests/Unit/EnglishCandidateClassifierTests.cs
+- [X] T016 [P] [US1] Add failing chat-completion request, response, cancellation, credential-header, and adapter-swap contract tests in tests/TerminalTranslator.Cli.Tests/Contract/TranslationProviderContractTests.cs
+- [X] T017 [P] [US1] Add failing translation/status event formatting and no-persistence tests in tests/TerminalTranslator.Cli.Tests/Contract/CompanionRendererContractTests.cs
+- [X] T018 [P] [US1] Add a failing simulated-stream basic translation journey with fake provider and in-memory event sink in tests/TerminalTranslator.Core.Tests/Integration/BasicTranslationJourneyTests.cs
 
 ### Implementation for User Story 1
 
-- [ ] T019 [P] [US1] Implement the incremental UTF-8 and basic VT text extractor with 8 KiB candidate cap in src/TerminalTranslator.Core/Parsing/VtTextExtractor.cs
-- [ ] T020 [P] [US1] Implement useful-English classification, prompt/error priority, deduplication keys, and layout hints in src/TerminalTranslator.Core/Parsing/EnglishCandidateClassifier.cs
-- [ ] T021 [P] [US1] Implement validated non-sensitive provider settings and JSON settings persistence in src/TerminalTranslator.Cli/Configuration/ProviderSettings.cs and src/TerminalTranslator.Cli/Configuration/ProviderSettingsStore.cs
-- [ ] T022 [US1] Implement the configurable chat-completion HTTP adapter with long-lived HttpClient, typed JSON DTOs, response limits, and no retry in src/TerminalTranslator.Cli/Providers/ChatCompletionTranslationProvider.cs and src/TerminalTranslator.Cli/Providers/ProviderJsonContext.cs
-- [ ] T023 [US1] Implement the basic translation coordinator, sequence ordering, provider call, and transient TranslationItem creation in src/TerminalTranslator.Core/Translation/TranslationCoordinator.cs
-- [ ] T024 [P] [US1] Implement event-pipe translation/status serialization and client reconnect handshake in src/TerminalTranslator.Windows/Ipc/EventPipeServer.cs and src/TerminalTranslator.Windows/Ipc/EventPipeClient.cs
-- [ ] T025 [P] [US1] Implement companion-pane rendering with source/translation association and layout hints in src/TerminalTranslator.Cli/Commands/CompanionRenderer.cs
-- [ ] T026 [US1] Implement provider configuration validation and the public configure command from contracts/cli.md in src/TerminalTranslator.Cli/Commands/ConfigureCommand.cs
-- [ ] T027 [US1] Implement unique-session Windows Terminal two-pane command construction and the public start command in src/TerminalTranslator.Windows/Terminal/WindowsTerminalLauncher.cs and src/TerminalTranslator.Cli/Commands/StartCommand.cs
-- [ ] T028 [US1] Implement the interactive consent prompt and minimal enable request used by the public on command in src/TerminalTranslator.Cli/Commands/ConsentPrompt.cs and src/TerminalTranslator.Cli/Commands/OnCommand.cs
-- [ ] T029 [US1] Wire basic host and companion internal commands to the extractor, coordinator, event pipe, and renderer in src/TerminalTranslator.Cli/Commands/HostCommand.cs and src/TerminalTranslator.Cli/Commands/CompanionCommand.cs
-- [ ] T030 [US1] Complete the fake-provider two-pane MVP acceptance harness and enforce SC-001/SC-002 translation quality and latency fixtures in tests/TerminalTranslator.Cli.Tests/Integration/UserStory1AcceptanceTests.cs and tests/TerminalTranslator.Core.Tests/Fixtures/TranslationCorpus.json
+- [X] T019 [P] [US1] Implement the incremental UTF-8 and basic VT text extractor with 8 KiB candidate cap in src/TerminalTranslator.Core/Parsing/VtTextExtractor.cs
+- [X] T020 [P] [US1] Implement useful-English classification, prompt/error priority, deduplication keys, and layout hints in src/TerminalTranslator.Core/Parsing/EnglishCandidateClassifier.cs
+- [X] T021 [P] [US1] Implement validated non-sensitive provider settings and JSON settings persistence in src/TerminalTranslator.Cli/Configuration/ProviderSettings.cs and src/TerminalTranslator.Cli/Configuration/ProviderSettingsStore.cs
+- [X] T022 [US1] Implement the configurable chat-completion HTTP adapter with long-lived HttpClient, typed JSON DTOs, response limits, and no retry in src/TerminalTranslator.Cli/Providers/ChatCompletionTranslationProvider.cs and src/TerminalTranslator.Cli/Providers/ProviderJsonContext.cs
+- [X] T023 [US1] Implement the basic translation coordinator, sequence ordering, provider call, and transient TranslationItem creation in src/TerminalTranslator.Core/Translation/TranslationCoordinator.cs
+- [X] T024 [P] [US1] Implement event-pipe translation/status serialization and client reconnect handshake in src/TerminalTranslator.Windows/Ipc/EventPipeServer.cs and src/TerminalTranslator.Windows/Ipc/EventPipeClient.cs
+- [X] T025 [P] [US1] Implement companion-pane rendering with source/translation association and layout hints in src/TerminalTranslator.Cli/Commands/CompanionRenderer.cs
+- [X] T026 [US1] Implement provider configuration validation and the public configure command from contracts/cli.md in src/TerminalTranslator.Cli/Commands/ConfigureCommand.cs
+- [X] T027 [US1] Implement unique-session Windows Terminal two-pane command construction and the public start command in src/TerminalTranslator.Windows/Terminal/WindowsTerminalLauncher.cs and src/TerminalTranslator.Cli/Commands/StartCommand.cs
+- [X] T028 [US1] Implement the interactive consent prompt and minimal enable request used by the public on command in src/TerminalTranslator.Cli/Commands/ConsentPrompt.cs and src/TerminalTranslator.Cli/Commands/OnCommand.cs
+- [X] T029 [US1] Wire basic host and companion internal commands to the extractor, coordinator, event pipe, and renderer in src/TerminalTranslator.Cli/Commands/HostCommand.cs and src/TerminalTranslator.Cli/Commands/CompanionCommand.cs
+- [X] T030 [US1] Complete the fake-provider two-pane MVP acceptance harness and enforce SC-001/SC-002 translation quality and latency fixtures in tests/TerminalTranslator.Cli.Tests/Integration/UserStory1AcceptanceTests.cs and tests/TerminalTranslator.Core.Tests/Fixtures/TranslationCorpus.json
 
 **Checkpoint**: US1 is a safe MVP: dedicated panes, explicit consent, basic eligible translation,
 no inline translation, and deterministic fake-provider validation.

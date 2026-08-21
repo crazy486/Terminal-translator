@@ -1,0 +1,49 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalTranslator.Core", "src\TerminalTranslator.Core\TerminalTranslator.Core.csproj", "{10D0A6FC-114A-4E9D-AF15-3B3388701401}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalTranslator.Windows", "src\TerminalTranslator.Windows\TerminalTranslator.Windows.csproj", "{AA1D5A6A-E74B-4A24-A31C-6A43F4195322}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalTranslator.Cli", "src\TerminalTranslator.Cli\TerminalTranslator.Cli.csproj", "{A5B412A3-B555-4614-B307-90EF4562F73F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalTranslator.Core.Tests", "tests\TerminalTranslator.Core.Tests\TerminalTranslator.Core.Tests.csproj", "{73377C99-C05E-4993-BF16-BA6B1A7B6E27}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalTranslator.Windows.Tests", "tests\TerminalTranslator.Windows.Tests\TerminalTranslator.Windows.Tests.csproj", "{416A8E9E-796B-432F-8F6E-B7CEB35DC7A8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerminalTranslator.Cli.Tests", "tests\TerminalTranslator.Cli.Tests\TerminalTranslator.Cli.Tests.csproj", "{45F3373A-61AD-4D48-A8C5-0C1D84B6D45E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{10D0A6FC-114A-4E9D-AF15-3B3388701401}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{10D0A6FC-114A-4E9D-AF15-3B3388701401}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{10D0A6FC-114A-4E9D-AF15-3B3388701401}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{10D0A6FC-114A-4E9D-AF15-3B3388701401}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AA1D5A6A-E74B-4A24-A31C-6A43F4195322}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA1D5A6A-E74B-4A24-A31C-6A43F4195322}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA1D5A6A-E74B-4A24-A31C-6A43F4195322}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA1D5A6A-E74B-4A24-A31C-6A43F4195322}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A5B412A3-B555-4614-B307-90EF4562F73F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5B412A3-B555-4614-B307-90EF4562F73F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5B412A3-B555-4614-B307-90EF4562F73F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5B412A3-B555-4614-B307-90EF4562F73F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{73377C99-C05E-4993-BF16-BA6B1A7B6E27}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{73377C99-C05E-4993-BF16-BA6B1A7B6E27}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{73377C99-C05E-4993-BF16-BA6B1A7B6E27}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{73377C99-C05E-4993-BF16-BA6B1A7B6E27}.Release|Any CPU.Build.0 = Release|Any CPU
+		{416A8E9E-796B-432F-8F6E-B7CEB35DC7A8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{416A8E9E-796B-432F-8F6E-B7CEB35DC7A8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{416A8E9E-796B-432F-8F6E-B7CEB35DC7A8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{416A8E9E-796B-432F-8F6E-B7CEB35DC7A8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{45F3373A-61AD-4D48-A8C5-0C1D84B6D45E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{45F3373A-61AD-4D48-A8C5-0C1D84B6D45E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{45F3373A-61AD-4D48-A8C5-0C1D84B6D45E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{45F3373A-61AD-4D48-A8C5-0C1D84B6D45E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

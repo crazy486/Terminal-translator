@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>tt</AssemblyName>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSelfContained>true</PublishSelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TerminalTranslator.Core\TerminalTranslator.Core.csproj" />
+    <ProjectReference Include="..\TerminalTranslator.Windows\TerminalTranslator.Windows.csproj" />
+    <PackageReference Include="System.CommandLine" Version="2.0.11" />
+  </ItemGroup>
+</Project>

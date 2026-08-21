@@ -1,0 +1,74 @@
+[
+  {
+    "source": "The operation completed successfully.",
+    "translation": "\u64cd\u4f5c\u5df2\u6210\u529f\u5b8c\u6210\u3002",
+    "valuable": true,
+    "delayMilliseconds": 15
+  },
+  {
+    "source": "Unable to open the requested file because access was denied.",
+    "translation": "\u7531\u4e8e\u8bbf\u95ee\u88ab\u62d2\u7edd\uff0c\u65e0\u6cd5\u6253\u5f00\u8bf7\u6c42\u7684\u6587\u4ef6\u3002",
+    "valuable": true,
+    "delayMilliseconds": 20
+  },
+  {
+    "source": "Continue with the operation? [y/N]",
+    "translation": "\u662f\u5426\u7ee7\u7eed\u8be5\u64cd\u4f5c\uff1f[y/N]",
+    "valuable": true,
+    "delayMilliseconds": 10
+  },
+  {
+    "source": "Warning: the local cache is out of date.",
+    "translation": "\u8b66\u544a\uff1a\u672c\u5730\u7f13\u5b58\u5df2\u8fc7\u671f\u3002",
+    "valuable": true,
+    "delayMilliseconds": 15
+  },
+  {
+    "source": "The package could not be restored from the configured source.",
+    "translation": "\u65e0\u6cd5\u4ece\u5df2\u914d\u7f6e\u7684\u6e90\u8fd8\u539f\u8be5\u5305\u3002",
+    "valuable": true,
+    "delayMilliseconds": 20
+  },
+  {
+    "source": "Please select an option before continuing.",
+    "translation": "\u8bf7\u5728\u7ee7\u7eed\u4e4b\u524d\u9009\u62e9\u4e00\u4e2a\u9009\u9879\u3002",
+    "valuable": true,
+    "delayMilliseconds": 10
+  },
+  {
+    "source": "Connection failed because the remote host did not respond.",
+    "translation": "\u8fde\u63a5\u5931\u8d25\uff0c\u56e0\u4e3a\u8fdc\u7a0b\u4e3b\u673a\u6ca1\u6709\u54cd\u5e94\u3002",
+    "valuable": true,
+    "delayMilliseconds": 15
+  },
+  {
+    "source": "Changes were saved and will take effect after restart.",
+    "translation": "\u66f4\u6539\u5df2\u4fdd\u5b58\uff0c\u5e76\u5c06\u5728\u91cd\u542f\u540e\u751f\u6548\u3002",
+    "valuable": true,
+    "delayMilliseconds": 10
+  },
+  {
+    "source": "The command finished with warnings but no errors.",
+    "translation": "\u547d\u4ee4\u5df2\u5b8c\u6210\uff0c\u6709\u8b66\u544a\u4f46\u6ca1\u6709\u9519\u8bef\u3002",
+    "valuable": true,
+    "delayMilliseconds": 20
+  },
+  {
+    "source": "Confirm that you want to remove the temporary item?",
+    "translation": "\u8bf7\u786e\u8ba4\u662f\u5426\u8981\u5220\u9664\u4e34\u65f6\u9879\u76ee\uff1f",
+    "valuable": true,
+    "delayMilliseconds": 10
+  },
+  {
+    "source": "C:\\src\\project\\Program.cs",
+    "translation": "",
+    "valuable": false,
+    "delayMilliseconds": 0
+  },
+  {
+    "source": "v10.0.400",
+    "translation": "",
+    "valuable": false,
+    "delayMilliseconds": 0
+  }
+]
