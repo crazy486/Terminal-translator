@@ -30,7 +30,15 @@ public sealed class ConsoleOutputRelay(
             // translation is enabled, and never wait for the analysis consumer.
             if (analysisSink?.IsEnabled == true)
             {
-                _ = analysisSink.TryOffer(buffer.AsMemory(0, count).ToArray());
+                try
+                {
+                    _ = analysisSink.TryOffer(buffer.AsMemory(0, count).ToArray());
+                }
+                catch
+                {
+                    // Translation is an optional side path. A failed offer must never stop the
+                    // ConPTY drain or alter bytes already forwarded to the program pane.
+                }
             }
         }
     }

@@ -33,6 +33,14 @@ public sealed class VtTextExtractor
     public void Resize(int viewportColumns) =>
         Volatile.Write(ref _viewportColumns, Math.Max(1, viewportColumns));
 
+    public void Reset()
+    {
+        _decoder.Reset();
+        InvalidateCandidate();
+        ResetControl();
+        _alternateBuffer = false;
+    }
+
     public IReadOnlyList<ExtractedText> Feed(ReadOnlySpan<byte> bytes)
     {
         if (bytes.IsEmpty)

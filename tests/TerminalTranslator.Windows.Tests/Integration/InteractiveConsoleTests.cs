@@ -38,12 +38,19 @@ public sealed class InteractiveConsoleTests
         await using ConPtySession session = ConPtySession.StartPowerShell(Environment.CurrentDirectory);
         Queue<(short Columns, short Rows)> sizes = new([(80, 24), (100, 40), (100, 40)]);
         List<(short Columns, short Rows)> observed = [];
-        using CancellationTokenSource cancellation = new(TimeSpan.FromMilliseconds(100));
+        using CancellationTokenSource cancellation = new();
         PseudoConsoleResizeMonitor monitor = new(
             session,
             () => sizes.Count > 0 ? sizes.Dequeue() : ((short)100, (short)40),
             TimeSpan.FromMilliseconds(5),
-            (columns, rows) => observed.Add((columns, rows)));
+            (columns, rows) =>
+            {
+                observed.Add((columns, rows));
+                if (columns == 100 && rows == 40)
+                {
+                    cancellation.Cancel();
+                }
+            });
         await Assert.ThrowsAsync<OperationCanceledException>(() => monitor.RunAsync(cancellation.Token));
         CollectionAssert.Contains(observed, ((short)100, (short)40));
     }

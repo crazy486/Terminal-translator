@@ -1,3 +1,3 @@
 using TerminalTranslator.Cli.Commands;
 
-return await CommandFactory.CreateRootCommand().Parse(args).InvokeAsync();
+return await CommandFactory.InvokeAsync(args);

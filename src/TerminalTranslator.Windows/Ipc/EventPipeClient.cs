@@ -28,7 +28,7 @@ public sealed class EventPipeClient : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(connectionTimeout));
         }
 
-        NamedPipeClientStream pipe = new(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        NamedPipeClientStream pipe = CurrentUserPipeFactory.CreateClient(pipeName, PipeDirection.InOut);
         using CancellationTokenSource startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         startup.CancelAfter(timeout);
         try

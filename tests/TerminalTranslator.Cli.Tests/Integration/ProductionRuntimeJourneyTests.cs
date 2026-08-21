@@ -37,6 +37,219 @@ public sealed class ProductionRuntimeJourneyTests
     }
 
     [TestMethod]
+    public async Task HereStringEchoAndPrompt_DoNotHideOrContaminateThreeOutputLines()
+    {
+        Guid session = Guid.NewGuid();
+        SlowRecordingProvider provider = new();
+        RecordingEventSink sink = new();
+        SubmittedCommandTracker submittedCommands = new();
+        await using ProductionTranslationPipeline pipeline = ProductionRuntimeComposition.CreateTranslationPipeline(
+            session,
+            provider,
+            sink,
+            TimeSpan.FromSeconds(2),
+            analysisLineFilter: submittedCommands.ClassifyAnalysisLine);
+        pipeline.Enable();
+
+        const string input =
+            "@\"\r\n" +
+            "The server is running normally.\r\n" +
+            "Three background tasks are currently active.\r\n" +
+            "No critical errors were detected.\r\n" +
+            "\"@\r\n";
+        submittedCommands.Observe(Encoding.UTF8.GetBytes(input));
+
+        const string conPtyOutput =
+            "PS C:\\work> @\"\r\n" +
+            ">> The server is running normally.\r\n" +
+            ">> Three background tasks are currently active.\r\n" +
+            ">> No critical errors were detected.\r\n" +
+            ">> \"@\r\n" +
+            ">> The server is running normally.\r\n" +
+            ">> Three background tasks are currently active.\r\n" +
+            ">> No critical errors were detected.\r\n" +
+            ">> \"@\r\n" +
+            "The server is running normally.\r\n" +
+            "Three background tasks are currently active.\r\n" +
+            "No critical errors were detected.\r\n" +
+            "PS C:\\work>";
+        byte[] rawBytes = Encoding.UTF8.GetBytes(conPtyOutput);
+        await using MemoryStream programOutput = new();
+
+        await new ConsoleOutputRelay(new MemoryStream(rawBytes), programOutput, pipeline)
+            .CopyAsync(CancellationToken.None);
+        Assert.IsTrue(await WaitUntilAsync(() => sink.Items.Count >= 1, TimeSpan.FromSeconds(3)));
+        await Task.Delay(200);
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "The server is running normally.\n" +
+                "Three background tasks are currently active.\n" +
+                "No critical errors were detected.",
+            },
+            provider.Requests.Select(request => request.SourceText).ToArray(),
+            string.Join(" || ", provider.Requests.Select(request => request.SourceText)));
+        Assert.IsFalse(provider.Requests.Any(request => request.SourceText.Contains(">>", StringComparison.Ordinal)));
+        Assert.IsFalse(provider.Requests.Any(request => request.SourceText.Contains("PS C:\\work>", StringComparison.Ordinal)));
+        Assert.AreEqual(1, sink.Items.Count);
+        Assert.AreEqual(3, sink.Items.Single().TranslatedText.Split('\n').Length);
+        CollectionAssert.AreEqual(rawBytes, programOutput.ToArray());
+    }
+
+    [TestMethod]
+    public async Task AnalysisSidePromptFiltering_HandlesPromptBoundariesAndKeepsGreaterThanOutput()
+    {
+        Guid session = Guid.NewGuid();
+        RecordingProvider provider = new();
+        RecordingEventSink sink = new();
+        await using ProductionTranslationPipeline pipeline = ProductionRuntimeComposition.CreateTranslationPipeline(
+            session, provider, sink, TimeSpan.FromSeconds(2));
+        pipeline.Enable();
+
+        Assert.IsTrue(pipeline.TryOffer(Encoding.UTF8.GetBytes("PS C:\\Users\\alice>")));
+        await Task.Delay(180);
+        Assert.AreEqual(0, provider.Requests.Count);
+
+        Assert.IsTrue(pipeline.TryOffer(Encoding.UTF8.GetBytes(
+            "Translation resumed.\r\nPS D:\\changed working directory>")));
+        Assert.IsTrue(await WaitUntilAsync(() => provider.Requests.Count >= 1, TimeSpan.FromSeconds(2)));
+
+        Assert.IsTrue(pipeline.TryOffer(Encoding.UTF8.GetBytes(">> ")));
+        await Task.Delay(180);
+        Assert.IsTrue(pipeline.TryOffer(Encoding.UTF8.GetBytes(
+            "The measured value > the configured threshold.\r\n")));
+        Assert.IsTrue(pipeline.TryOffer(Encoding.UTF8.GetBytes(
+            "The diagnostic contains PS C:\\work> as ordinary program output.\r\n")));
+        Assert.IsTrue(pipeline.TryOffer(Encoding.UTF8.GetBytes(
+            "PS C:\\> this is ordinary output\r\n" +
+            "The report contains > and >> plus PS markers.\r\n")));
+        Assert.IsTrue(await WaitUntilAsync(() => provider.Requests.Count >= 2, TimeSpan.FromSeconds(2)));
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "Translation resumed.",
+                "The measured value > the configured threshold.\n" +
+                "The diagnostic contains PS C:\\work> as ordinary program output.\n" +
+                "PS C:\\> this is ordinary output\n" +
+                "The report contains > and >> plus PS markers.",
+            },
+            provider.Requests.Select(request => request.SourceText).ToArray(),
+            string.Join(" || ", provider.Requests.Select(request => request.SourceText)));
+    }
+
+    [TestMethod]
+    [DataRow(30)]
+    [DataRow(180)]
+    public async Task MultipleSubmittedCommands_FilterEveryPromptTailEchoAcrossIdleBoundaries(int intervalMilliseconds)
+    {
+        Guid session = Guid.NewGuid();
+        RecordingProvider provider = new();
+        RecordingEventSink sink = new();
+        SubmittedCommandTracker submittedCommands = new();
+        await using ProductionTranslationPipeline pipeline = ProductionRuntimeComposition.CreateTranslationPipeline(
+            session,
+            provider,
+            sink,
+            TimeSpan.FromSeconds(2),
+            analysisLineFilter: submittedCommands.ClassifyAnalysisLine);
+        pipeline.Enable();
+
+        string[] commands =
+        [
+            "Write-Output \"The first operation completed successfully.\"",
+            "Write-Output \"The second operation completed successfully.\"",
+            "Write-Output \"The third operation completed successfully.\"",
+        ];
+        submittedCommands.Observe(Encoding.UTF8.GetBytes(string.Join("\r\n", commands) + "\r\n"));
+
+        string[] outputs =
+        [
+            "The first operation completed successfully.",
+            "The second operation completed successfully.",
+            "The third operation completed successfully.",
+        ];
+        string[] directories = ["C:\\", "D:\\changed", "D:\\changed\\again"];
+        await using MemoryStream programOutput = new();
+        for (int index = 0; index < commands.Length; index++)
+        {
+            string raw =
+                $"PS {directories[index]}> {commands[index]}\r\n" +
+                $"PS {directories[index]}> {commands[index]}\r\n" +
+                outputs[index] + "\r\n";
+            await new ConsoleOutputRelay(
+                new MemoryStream(Encoding.UTF8.GetBytes(raw)),
+                programOutput,
+                pipeline).CopyAsync(CancellationToken.None);
+            await Task.Delay(intervalMilliseconds);
+        }
+
+        const string finalPrompt = "PS D:\\changed\\again>";
+        await new ConsoleOutputRelay(
+            new MemoryStream(Encoding.UTF8.GetBytes(finalPrompt)),
+            programOutput,
+            pipeline).CopyAsync(CancellationToken.None);
+
+        Assert.IsTrue(await WaitUntilAsync(
+            () => string.Join('\n', provider.Requests.Select(request => request.SourceText))
+                .Contains(outputs[^1], StringComparison.Ordinal),
+            TimeSpan.FromSeconds(2)));
+
+        string allSources = string.Join('\n', provider.Requests.Select(request => request.SourceText));
+        foreach (string output in outputs)
+        {
+            StringAssert.Contains(allSources, output);
+        }
+
+        Assert.IsFalse(allSources.Contains("PS ", StringComparison.Ordinal), allSources);
+        Assert.IsFalse(allSources.Contains("Write-Output", StringComparison.Ordinal), allSources);
+        string expectedRaw = string.Concat(commands.Select((command, index) =>
+            $"PS {directories[index]}> {command}\r\n" +
+            $"PS {directories[index]}> {command}\r\n" +
+            outputs[index] + "\r\n")) + finalPrompt;
+        CollectionAssert.AreEqual(Encoding.UTF8.GetBytes(expectedRaw), programOutput.ToArray());
+    }
+
+    [TestMethod]
+    public async Task TerminalTranslatorControlCommands_DoNotFeedTheirOwnedOutputBackToProvider()
+    {
+        Guid session = Guid.NewGuid();
+        RecordingProvider provider = new();
+        RecordingEventSink sink = new();
+        SubmittedCommandTracker submittedCommands = new();
+        await using ProductionTranslationPipeline pipeline = ProductionRuntimeComposition.CreateTranslationPipeline(
+            session,
+            provider,
+            sink,
+            TimeSpan.FromSeconds(2),
+            analysisLineFilter: submittedCommands.ClassifyAnalysisLine);
+
+        submittedCommands.Observe("tt on\r\n"u8.ToArray());
+        pipeline.Enable();
+        Assert.IsTrue(pipeline.TryOffer(Encoding.UTF8.GetBytes(
+            "Translation resumed.\r\nPS C:\\work>")));
+        await Task.Delay(180);
+
+        submittedCommands.Observe("tt status\r\n"u8.ToArray());
+        Assert.IsTrue(pipeline.TryOffer(Encoding.UTF8.GetBytes(
+            "PS D:\\changed> tt status\r\n" +
+            "session: active\r\n" +
+            "translation: enabled\r\n" +
+            "provider: fake.local, fake-model\r\n" +
+            "queue: high=0 normal=0\r\n" +
+            "privacy-skipped: 0\r\n" +
+            "overload-dropped: 0\r\n" +
+            "PS D:\\changed>")));
+        await Task.Delay(180);
+
+        submittedCommands.Observe("tt off\r\n"u8.ToArray());
+        pipeline.Disable();
+        Assert.IsFalse(pipeline.TryOffer(Encoding.UTF8.GetBytes("Translation disabled.\r\n")));
+        Assert.AreEqual(0, provider.Requests.Count, string.Join(" || ", provider.Requests));
+    }
+
+    [TestMethod]
     public async Task RealInteractiveConPty_AfterControlEnable_ReachesProductionProvider()
     {
         Guid session = Guid.NewGuid();
@@ -54,7 +267,7 @@ public sealed class ProductionRuntimeJourneyTests
             sink,
             TimeSpan.FromSeconds(2),
             viewportColumns: 60,
-            commandEchoFilter: submittedCommands.IsEcho);
+            analysisLineFilter: submittedCommands.ClassifyAnalysisLine);
         await using MinimalControlPipeServer controlServer = new(
             controlPipe, sessionId, fingerprint,
             _ =>
@@ -308,7 +521,13 @@ public sealed class ProductionRuntimeJourneyTests
             using StringWriter output = new();
             using StringWriter error = new();
 
-            int exitCode = await OnCommand.Create(store, input, output, error).Parse([]).InvokeAsync();
+            int exitCode = await OnCommand.Create(
+                store,
+                input,
+                output,
+                error,
+                (_, _) => new MinimalEnableRequestSender(SessionPipeNames.Control(sessionId, nonce)))
+                .Parse([]).InvokeAsync();
 
             Assert.AreEqual(0, exitCode, error.ToString());
             Assert.IsTrue(hostEnabled);
@@ -353,6 +572,22 @@ public sealed class ProductionRuntimeJourneyTests
             }
 
             return Task.FromResult(new TranslationResult("构建失败，因为缺少必需的配置文件。", "fake-interactive"));
+        }
+    }
+
+    private sealed class SlowRecordingProvider : ITranslationProvider
+    {
+        public List<TranslationRequest> Requests { get; } = [];
+
+        public async Task<TranslationResult> TranslateAsync(
+            TranslationRequest request,
+            CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            await Task.Delay(TimeSpan.FromMilliseconds(1700), cancellationToken);
+            return new TranslationResult(
+                "Translated line one.\nTranslated line two.\nTranslated line three.",
+                "fake-slow");
         }
     }
 

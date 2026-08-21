@@ -4,6 +4,7 @@ using TerminalTranslator.Cli.Configuration;
 using TerminalTranslator.Cli.Providers;
 using TerminalTranslator.Core.Models;
 using TerminalTranslator.Core.Parsing;
+using TerminalTranslator.Core.Privacy;
 using TerminalTranslator.Core.Sessions;
 using TerminalTranslator.Core.Translation;
 using TerminalTranslator.Windows.ConPty;
@@ -135,15 +136,28 @@ public static class HostCommand
         });
 
         using CancellationTokenSource runtimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        TranslationSession? translationSession = null;
+        SystemClock? clock = null;
+        EventPipeServer? eventServer = null;
         try
         {
+            clock = new SystemClock();
+            translationSession = new TranslationSession(sessionId, clock);
+            translationSession.Start();
             Coord initialSize = ReadInitialSize();
             string eventPipeName = SessionPipeNames.Event(requestedSession, nonce);
             string controlPipeName = SessionPipeNames.Control(requestedSession, nonce);
-            await using EventPipeServer eventServer = new(eventPipeName, requestedSession, nonce);
-            Task eventReady = eventServer.WaitForClientAsync(runtimeCancellation.Token);
+            eventServer = new EventPipeServer(eventPipeName, requestedSession, nonce);
+            Task eventReady = RunEventConnectionsAsync(eventServer, runtimeCancellation.Token);
+            StatusAggregator statusAggregator = new(sessionId, clock);
 
-            ChatCompletionTranslationProvider provider = new(settings, httpClient, Environment.GetEnvironmentVariable);
+            SecretDetector secretDetector = new();
+            ChatCompletionTranslationProvider provider = new(
+                settings,
+                httpClient,
+                Environment.GetEnvironmentVariable,
+                secretDetector,
+                request => translationSession.IsAuthorized(request.SessionGeneration, settings.Fingerprint));
             SubmittedCommandTracker submittedCommands = new();
             await using ProductionTranslationPipeline pipeline =
                 ProductionRuntimeComposition.CreateTranslationPipeline(
@@ -151,25 +165,33 @@ public static class HostCommand
                     provider,
                     eventServer,
                     settings.RequestTimeout,
-                    (code, token) => new ValueTask(eventServer.PublishAsync(
-                        new StatusEventMessage(
-                            "provider-error",
-                            SessionProtocol.Version,
-                            ToProtocolErrorCode(code)),
-                        token)),
+                    (code, token) => PublishAggregatedStatusAsync(
+                        eventServer,
+                        statusAggregator.RecordProviderFailure(code, 1, null, null),
+                        token),
                     initialSize.X,
-                    submittedCommands.IsEcho);
-            await using MinimalControlPipeServer controlServer = new(
+                    analysisLineFilter: submittedCommands.ClassifyAnalysisLine,
+                    secretDetector: secretDetector,
+                    session: translationSession,
+                    providerFingerprint: settings.Fingerprint,
+                    privacyDecisionSink: (decision, token) => PublishAggregatedStatusAsync(
+                        eventServer,
+                        statusAggregator.RecordPrivacySkip(decision.ReasonCode, 1),
+                        token),
+                    overloadSink: (count, token) => PublishAggregatedStatusAsync(
+                        eventServer,
+                        statusAggregator.RecordOverload(count),
+                        token));
+            SessionControlHandler controlHandler = new(
+                translationSession,
+                pipeline,
+                settings,
+                eventServer.PublishAsync);
+            await using ControlPipeServer controlServer = new(
                 controlPipeName,
                 requestedSession,
-                settings.Fingerprint,
-                async token =>
-                {
-                    await eventReady.WaitAsync(token).ConfigureAwait(false);
-                    pipeline.Enable();
-                    _ = eventServer.PublishAsync(new StateEventMessage(
-                        "state", SessionProtocol.Version, "enabled", settings.Endpoint.Host, settings.Model), token);
-                });
+                nonce,
+                controlHandler);
             Task controlTask = controlServer.RunAsync(runtimeCancellation.Token);
 
             await using ConPtySession pseudoConsole = ConPtySession.StartPowerShell(workingDirectory, initialSize);
@@ -193,10 +215,26 @@ public static class HostCommand
             Task resizeTask = resizeMonitor.RunAsync(interactiveCancellation.Token);
 
             int exitCode = await pseudoConsole.WaitForExitAsync(runtimeCancellation.Token).ConfigureAwait(false);
-            interactiveCancellation.Cancel();
-            await pseudoConsole.CompleteInputAsync().ConfigureAwait(false);
-            pseudoConsole.ClosePseudoConsole();
-            await outputTask.ConfigureAwait(false);
+            SessionTeardown teardown = new(translationSession, clock);
+            await teardown.ExecuteAsync(
+                "shell-exit",
+                exitCode,
+                abnormal: false,
+                async _ =>
+                {
+                    interactiveCancellation.Cancel();
+                    await pseudoConsole.CompleteInputAsync().ConfigureAwait(false);
+                    pseudoConsole.ClosePseudoConsole();
+                    await outputTask.ConfigureAwait(false);
+                },
+                (status, token) => new ValueTask(eventServer.PublishAsync(
+                    new StatusEventMessage(
+                        "session-ended",
+                        SessionProtocol.Version,
+                        status.Code,
+                        ExitCode: status.Count),
+                    token)),
+                CancellationToken.None).ConfigureAwait(false);
 
             runtimeCancellation.Cancel();
             await ObserveCancellationAsync(inputTask, TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
@@ -207,23 +245,68 @@ public static class HostCommand
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            await TeardownFaultedSessionAsync(
+                translationSession,
+                clock,
+                eventServer,
+                "host-canceled").ConfigureAwait(false);
             return 0;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or
             UnauthorizedAccessException or Win32Exception)
         {
+            await TeardownFaultedSessionAsync(
+                translationSession,
+                clock,
+                eventServer,
+                "host-fault").ConfigureAwait(false);
             await error.WriteLineAsync($"Host terminal runtime failed: {exception.Message}").ConfigureAwait(false);
             return 6;
         }
         finally
         {
             runtimeCancellation.Cancel();
+            translationSession?.Dispose();
+            if (eventServer is not null)
+            {
+                await eventServer.DisposeAsync().ConfigureAwait(false);
+            }
+
             if (ownsHttpClient)
             {
                 httpClient.Dispose();
             }
         }
     }
+
+    private static async Task TeardownFaultedSessionAsync(
+        TranslationSession? session,
+        IClock? clock,
+        EventPipeServer? eventServer,
+        string reason)
+    {
+        if (session is null || clock is null || session.State == SessionState.Ended)
+        {
+            return;
+        }
+
+        SessionTeardown teardown = new(session, clock);
+        await teardown.ExecuteAsync(
+            reason,
+            exitCode: null,
+            abnormal: true,
+            _ => Task.CompletedTask,
+            eventServer is null
+                ? null
+                : (status, token) => new ValueTask(eventServer.PublishAsync(
+                    new StatusEventMessage(
+                        "session-ended",
+                        SessionProtocol.Version,
+                        status.Code),
+                    token)),
+            CancellationToken.None).ConfigureAwait(false);
+    }
+
 
     private static Coord ReadInitialSize()
     {
@@ -239,16 +322,49 @@ public static class HostCommand
         }
     }
 
-    private static string ToProtocolErrorCode(TranslationErrorCode code) => code switch
+    private static async Task RunEventConnectionsAsync(
+        EventPipeServer server,
+        CancellationToken cancellationToken)
     {
-        TranslationErrorCode.Canceled => "canceled",
-        TranslationErrorCode.Timeout => "timeout",
-        TranslationErrorCode.Authentication => "authentication",
-        TranslationErrorCode.RateLimited => "rate-limited",
-        TranslationErrorCode.Unavailable => "unavailable",
-        TranslationErrorCode.InvalidResponse => "invalid-response",
-        _ => "unknown",
-    };
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await server.WaitForClientAsync(cancellationToken).ConfigureAwait(false);
+                await server.WaitForDisconnectAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or ObjectDisposedException)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static ValueTask PublishAggregatedStatusAsync(
+        EventPipeServer eventServer,
+        StatusEvent? status,
+        CancellationToken cancellationToken)
+    {
+        if (status is null)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        string type = status.Kind switch
+        {
+            StatusKind.ProviderError => "provider-error",
+            StatusKind.PrivacySkip => "privacy-skip",
+            StatusKind.Degraded => "degraded",
+            _ => "status",
+        };
+        return new ValueTask(eventServer.PublishAsync(
+            new StatusEventMessage(type, SessionProtocol.Version, status.Code, status.Count),
+            cancellationToken));
+    }
 
     private static async Task ObserveCancellationAsync(Task task, TimeSpan? maximumWait = null)
     {

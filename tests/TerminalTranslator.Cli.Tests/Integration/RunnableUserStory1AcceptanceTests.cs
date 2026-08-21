@@ -62,7 +62,7 @@ public sealed class RunnableUserStory1AcceptanceTests
             provider,
             eventServer,
             settings.RequestTimeout,
-            commandEchoFilter: submittedCommands.IsEcho);
+            analysisLineFilter: submittedCommands.ClassifyAnalysisLine);
         await using MinimalControlPipeServer controlServer = new(
             controlPipeName,
             sessionId,

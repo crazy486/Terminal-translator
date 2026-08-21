@@ -37,7 +37,16 @@ public sealed class ProviderSettingsStore
                 4096,
                 FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
-                await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken).ConfigureAwait(false);
+                PersistedProviderSettings persisted = new(
+                    settings.Adapter,
+                    settings.Endpoint,
+                    settings.Model,
+                    settings.ApiKeyEnvironmentVariable,
+                    settings.RequestTimeout,
+                    settings.SourceLanguage,
+                    settings.TargetLanguage,
+                    settings.RequestTimeoutIsDefault);
+                await JsonSerializer.SerializeAsync(stream, persisted, JsonOptions, cancellationToken).ConfigureAwait(false);
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -60,7 +69,10 @@ public sealed class ProviderSettingsStore
         }
 
         await using FileStream stream = new(SettingsPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
-        ProviderSettings? settings = await JsonSerializer.DeserializeAsync<ProviderSettings>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+        PersistedProviderSettings? settings = await JsonSerializer.DeserializeAsync<PersistedProviderSettings>(
+            stream,
+            JsonOptions,
+            cancellationToken).ConfigureAwait(false);
         if (settings is null)
         {
             throw new InvalidDataException("Provider settings are empty or invalid.");
@@ -81,4 +93,14 @@ public sealed class ProviderSettingsStore
             settings.Endpoint.Scheme == Uri.UriSchemeHttp && settings.Endpoint.IsLoopback,
             usesDefaultTimeout);
     }
+
+    private sealed record PersistedProviderSettings(
+        string Adapter,
+        Uri Endpoint,
+        string Model,
+        string ApiKeyEnvironmentVariable,
+        TimeSpan RequestTimeout,
+        string SourceLanguage,
+        string TargetLanguage,
+        bool? RequestTimeoutIsDefault);
 }

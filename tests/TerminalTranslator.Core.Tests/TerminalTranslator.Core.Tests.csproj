@@ -2,4 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\TerminalTranslator.Core\TerminalTranslator.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Fixtures\SecretCorpus.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

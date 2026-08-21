@@ -148,23 +148,23 @@ content remains after teardown.
 
 ### Tests for User Story 3
 
-- [ ] T042 [P] [US3] Add failing TranslationSession state, generation, consent fingerprint, invalid-transition, and late-result tests in tests/TerminalTranslator.Core.Tests/Unit/TranslationSessionTests.cs
-- [ ] T043 [P] [US3] Add failing configure/start/on/off/status parser, disclosure, idempotency, and exit-code contract tests in tests/TerminalTranslator.Cli.Tests/Contract/CliContractTests.cs
-- [ ] T044 [P] [US3] Add failing same-user ACL, nonce handshake, protocol-version, role, malformed JSON, and 32 KiB limit tests in tests/TerminalTranslator.Windows.Tests/Integration/SessionPipeSecurityTests.cs
-- [ ] T045 [P] [US3] Add failing credential assignment, authorization, JWT, private-key, credential-URI, split-block, detector-fault, and benign-ID tests in tests/TerminalTranslator.Core.Tests/Unit/SecretDetectorTests.cs and tests/TerminalTranslator.Core.Tests/Fixtures/SecretCorpus.json
-- [ ] T046 [P] [US3] Add failing disable-under-load, old-generation suppression, normal/abnormal cleanup, and no-content-file tests in tests/TerminalTranslator.Core.Tests/Integration/SessionLifecycleTests.cs
+- [X] T042 [P] [US3] Add failing TranslationSession state, generation, consent fingerprint, invalid-transition, and late-result tests in tests/TerminalTranslator.Core.Tests/Unit/TranslationSessionTests.cs
+- [X] T043 [P] [US3] Add failing configure/start/on/off/status parser, disclosure, idempotency, and exit-code contract tests in tests/TerminalTranslator.Cli.Tests/Contract/CliContractTests.cs
+- [X] T044 [P] [US3] Add failing same-user ACL, nonce handshake, protocol-version, role, malformed JSON, and 32 KiB limit tests in tests/TerminalTranslator.Windows.Tests/Integration/SessionPipeSecurityTests.cs
+- [X] T045 [P] [US3] Add failing credential assignment, authorization, JWT, private-key, credential-URI, split-block, detector-fault, and benign-ID tests in tests/TerminalTranslator.Core.Tests/Unit/SecretDetectorTests.cs and tests/TerminalTranslator.Core.Tests/Fixtures/SecretCorpus.json
+- [X] T046 [P] [US3] Add failing disable-under-load, old-generation suppression, normal/abnormal cleanup, and no-content-file tests in tests/TerminalTranslator.Core.Tests/Integration/SessionLifecycleTests.cs
 
 ### Implementation for User Story 3
 
-- [ ] T047 [US3] Implement TranslationSession state transitions, generation cancellation, consent fingerprinting, and content collection ownership in src/TerminalTranslator.Core/Sessions/TranslationSession.cs
-- [ ] T048 [P] [US3] Implement current-user-only, network-denied named-pipe creation and authenticated handshake validation in src/TerminalTranslator.Windows/Ipc/CurrentUserPipeFactory.cs and src/TerminalTranslator.Windows/Ipc/SessionHandshakeValidator.cs
-- [ ] T049 [US3] Implement the versioned duplex control server with enable, disable, and content-free status responses in src/TerminalTranslator.Windows/Ipc/ControlPipeServer.cs
-- [ ] T050 [US3] Implement the control client and complete public on, off, and status commands in src/TerminalTranslator.Windows/Ipc/ControlPipeClient.cs, src/TerminalTranslator.Cli/Commands/OnCommand.cs, src/TerminalTranslator.Cli/Commands/OffCommand.cs, and src/TerminalTranslator.Cli/Commands/StatusCommand.cs
-- [ ] T051 [P] [US3] Implement the fail-closed multiline secret detector and generic PrivacyDecision reason codes in src/TerminalTranslator.Core/Privacy/SecretDetector.cs
-- [ ] T052 [US3] Enforce secret screening before classification/enqueue and again before provider serialization in src/TerminalTranslator.Core/Translation/TranslationCoordinator.cs and src/TerminalTranslator.Cli/Providers/ChatCompletionTranslationProvider.cs
-- [ ] T053 [P] [US3] Harden settings and diagnostics so credentials and content never enter JSON settings, exceptions, or status output in src/TerminalTranslator.Cli/Configuration/ProviderSettingsStore.cs and src/TerminalTranslator.Cli/Diagnostics/ContentFreeDiagnosticSink.cs
-- [ ] T054 [US3] Implement cancellation-first normal/abnormal teardown, queue/content clearing, and companion session-ended events in src/TerminalTranslator.Core/Sessions/SessionTeardown.cs and src/TerminalTranslator.Cli/Commands/HostCommand.cs
-- [ ] T055 [US3] Complete SC-005/SC-006/SC-008/SC-009/SC-010 acceptance coverage in tests/TerminalTranslator.Cli.Tests/Integration/UserStory3AcceptanceTests.cs
+- [X] T047 [US3] Implement TranslationSession state transitions, generation cancellation, consent fingerprinting, and content collection ownership in src/TerminalTranslator.Core/Sessions/TranslationSession.cs
+- [X] T048 [P] [US3] Implement current-user-only, network-denied named-pipe creation and authenticated handshake validation in src/TerminalTranslator.Windows/Ipc/CurrentUserPipeFactory.cs and src/TerminalTranslator.Windows/Ipc/SessionHandshakeValidator.cs
+- [X] T049 [US3] Implement the versioned duplex control server with enable, disable, and content-free status responses in src/TerminalTranslator.Windows/Ipc/ControlPipeServer.cs
+- [X] T050 [US3] Implement the control client and complete public on, off, and status commands in src/TerminalTranslator.Windows/Ipc/ControlPipeClient.cs, src/TerminalTranslator.Cli/Commands/OnCommand.cs, src/TerminalTranslator.Cli/Commands/OffCommand.cs, and src/TerminalTranslator.Cli/Commands/StatusCommand.cs
+- [X] T051 [P] [US3] Implement the fail-closed multiline secret detector and generic PrivacyDecision reason codes in src/TerminalTranslator.Core/Privacy/SecretDetector.cs
+- [X] T052 [US3] Enforce secret screening before classification/enqueue and again before provider serialization in src/TerminalTranslator.Core/Translation/TranslationCoordinator.cs and src/TerminalTranslator.Cli/Providers/ChatCompletionTranslationProvider.cs
+- [X] T053 [P] [US3] Harden settings and diagnostics so credentials and content never enter JSON settings, exceptions, or status output in src/TerminalTranslator.Cli/Configuration/ProviderSettingsStore.cs and src/TerminalTranslator.Cli/Diagnostics/ContentFreeDiagnosticSink.cs
+- [X] T054 [US3] Implement cancellation-first normal/abnormal teardown, queue/content clearing, and companion session-ended events in src/TerminalTranslator.Core/Sessions/SessionTeardown.cs and src/TerminalTranslator.Cli/Commands/HostCommand.cs
+- [X] T055 [US3] Complete SC-005/SC-006/SC-008/SC-009/SC-010 acceptance coverage in tests/TerminalTranslator.Cli.Tests/Integration/UserStory3AcceptanceTests.cs
 
 **Checkpoint**: US3 proves explicit authority over every external transmission, safe secret
 handling, disablement within one second, and no content persistence.
@@ -182,19 +182,19 @@ status remains bounded and content-free.
 
 ### Tests for User Story 4
 
-- [ ] T056 [P] [US4] Add failing timeout, cancellation, 401/403, 429, 408/5xx, connection, malformed, empty, oversized, redirect, cookie, and no-retry tests in tests/TerminalTranslator.Cli.Tests/Contract/ProviderFailureContractTests.cs
-- [ ] T057 [P] [US4] Add failing 16-high/48-normal/256-KiB limits, redraw replacement, priority eviction, 1.5-second expiry, and non-blocking offer tests in tests/TerminalTranslator.Core.Tests/Unit/TranslationWorkQueueTests.cs
-- [ ] T058 [P] [US4] Add failing five-second degradation aggregation and content-free provider/privacy status tests in tests/TerminalTranslator.Core.Tests/Unit/StatusAggregatorTests.cs
-- [ ] T059 [P] [US4] Add failing slow provider, companion disconnect/reconnect, ignored cancellation, active-output shutdown, and unchanged shell tests in tests/TerminalTranslator.Windows.Tests/Integration/FailureIsolationTests.cs
+- [X] T056 [P] [US4] Add failing timeout, cancellation, 401/403, 429, 408/5xx, connection, malformed, empty, oversized, redirect, cookie, and no-retry tests in tests/TerminalTranslator.Cli.Tests/Contract/ProviderFailureContractTests.cs
+- [X] T057 [P] [US4] Add failing 16-high/48-normal/256-KiB limits, redraw replacement, priority eviction, 1.5-second expiry, and non-blocking offer tests in tests/TerminalTranslator.Core.Tests/Unit/TranslationWorkQueueTests.cs
+- [X] T058 [P] [US4] Add failing five-second degradation aggregation and content-free provider/privacy status tests in tests/TerminalTranslator.Core.Tests/Unit/StatusAggregatorTests.cs
+- [X] T059 [P] [US4] Add failing slow provider, companion disconnect/reconnect, ignored cancellation, active-output shutdown, and unchanged shell tests in tests/TerminalTranslator.Windows.Tests/Integration/FailureIsolationTests.cs
 
 ### Implementation for User Story 4
 
-- [ ] T060 [US4] Implement the non-blocking two-lane bounded queue, text budget, redraw replacement, eviction, and expiry policy in src/TerminalTranslator.Core/Translation/TranslationWorkQueue.cs
-- [ ] T061 [US4] Implement provider deadline handling and normalized error mapping with redirects/cookies disabled and no retry in src/TerminalTranslator.Cli/Providers/ChatCompletionTranslationProvider.cs
-- [ ] T062 [P] [US4] Implement rate-limited content-free privacy, overload, and provider status aggregation in src/TerminalTranslator.Core/Sessions/StatusAggregator.cs
-- [ ] T063 [US4] Implement translation worker cancellation, stale-generation rejection, invalid-result discard, and companion-unavailable behavior in src/TerminalTranslator.Core/Translation/TranslationWorker.cs
-- [ ] T064 [US4] Integrate queue and worker failure isolation without waits in the ConPTY drain path in src/TerminalTranslator.Windows/Console/ConsoleOutputRelay.cs and src/TerminalTranslator.Cli/Commands/HostCommand.cs
-- [ ] T065 [US4] Enforce SC-004 and fixed memory/notice bounds with sustained-output acceptance tests in tests/TerminalTranslator.Cli.Tests/Integration/UserStory4AcceptanceTests.cs
+- [X] T060 [US4] Implement the non-blocking two-lane bounded queue, text budget, redraw replacement, eviction, and expiry policy in src/TerminalTranslator.Core/Translation/TranslationWorkQueue.cs
+- [X] T061 [US4] Implement provider deadline handling and normalized error mapping with redirects/cookies disabled and no retry in src/TerminalTranslator.Cli/Providers/ChatCompletionTranslationProvider.cs
+- [X] T062 [P] [US4] Implement rate-limited content-free privacy, overload, and provider status aggregation in src/TerminalTranslator.Core/Sessions/StatusAggregator.cs
+- [X] T063 [US4] Implement translation worker cancellation, stale-generation rejection, invalid-result discard, and companion-unavailable behavior in src/TerminalTranslator.Core/Translation/TranslationWorker.cs
+- [X] T064 [US4] Integrate queue and worker failure isolation without waits in the ConPTY drain path in src/TerminalTranslator.Windows/Console/ConsoleOutputRelay.cs and src/TerminalTranslator.Cli/Commands/HostCommand.cs
+- [X] T065 [US4] Enforce SC-004 and fixed memory/notice bounds with sustained-output acceptance tests in tests/TerminalTranslator.Cli.Tests/Integration/UserStory4AcceptanceTests.cs
 
 **Checkpoint**: US4 demonstrates that translation is always an optional side path and cannot stop,
 delay, or change the original program.
@@ -205,12 +205,12 @@ delay, or change the original program.
 
 **Purpose**: Package, document, audit, and validate the complete phase-one product.
 
-- [ ] T066 [P] Add user-facing install, privacy model, provider configuration, command reference, and limitations to README.md
-- [ ] T067 [P] Add a deterministic local provider stub for quickstart and failure scenarios in tests/TerminalTranslator.Cli.Tests/Fixtures/StubTranslationServer.cs
-- [ ] T068 Add self-contained single-file win-x64 publish and artifact verification commands to scripts/publish.ps1
-- [ ] T069 Add an offline full validation runner matching quickstart.md to scripts/validate.ps1
-- [ ] T070 Audit dependency direction, public types, and source/translation logging sinks against the constitution in specs/001-translate-terminal-output/checklists/implementation-audit.md
-- [ ] T071 Run the translation corpus, interactive matrix, security corpus, overload tests, and full regression suite defined by TerminalTranslator.sln and record any justified exclusions in specs/001-translate-terminal-output/checklists/implementation-audit.md
+- [X] T066 [P] Add user-facing install, privacy model, provider configuration, command reference, and limitations to README.md
+- [X] T067 [P] Add a deterministic local provider stub for quickstart and failure scenarios in tests/TerminalTranslator.Cli.Tests/Fixtures/StubTranslationServer.cs
+- [X] T068 Add self-contained single-file win-x64 publish and artifact verification commands to scripts/publish.ps1
+- [X] T069 Add an offline full validation runner matching quickstart.md to scripts/validate.ps1
+- [X] T070 Audit dependency direction, public types, and source/translation logging sinks against the constitution in specs/001-translate-terminal-output/checklists/implementation-audit.md
+- [X] T071 Run the translation corpus, interactive matrix, security corpus, overload tests, and full regression suite defined by TerminalTranslator.sln and record any justified exclusions in specs/001-translate-terminal-output/checklists/implementation-audit.md
 - [ ] T072 Execute every runnable scenario in specs/001-translate-terminal-output/quickstart.md with test credentials and update only inaccurate validation instructions in specs/001-translate-terminal-output/quickstart.md
 
 ---

@@ -42,11 +42,11 @@ Expected:
 ## Publish the Local Executable
 
 ```powershell
-dotnet publish src/TerminalTranslator.Cli/TerminalTranslator.Cli.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false --output artifacts/publish
-$env:Path = "$PWD\artifacts\publish;$env:Path"
+./scripts/publish.ps1
+$env:Path = "$PWD\artifacts\publish\win-x64;$env:Path"
 ```
 
-Expected: `artifacts/publish/tt.exe` exists and `tt --help` lists `configure`, `start`, `on`,
+Expected: `artifacts/publish/win-x64/tt.exe` exists and `tt --help` lists `configure`, `start`, `on`,
 `off`, and `status`.
 
 ## Configure a Test Provider
@@ -60,6 +60,8 @@ tt configure --endpoint "https://provider.example/v1/chat/completions" --model "
 
 Replace the endpoint and model with the test provider values. Expected:
 
+- This command explicitly selects a 1.5-second test timeout. Omitting `--timeout-ms` uses the
+  current production default of 10 seconds.
 - Output shows endpoint host, model, environment-variable name, and settings path.
 - Output and settings never contain the value of `TT_PROVIDER_TEST_KEY`.
 - An HTTP endpoint is rejected unless it is loopback and the explicit test-only
@@ -158,7 +160,17 @@ credential URIs, split/multiline patterns, detector exceptions, and benign ident
 
 ## Disable and Late-Result Suppression
 
-Create provider latency with the deterministic test stub, then run:
+The repository's deterministic stub is process-local to the automated test assembly. Validate its
+success and failure modes without starting a public network listener:
+
+```powershell
+dotnet test tests/TerminalTranslator.Cli.Tests/TerminalTranslator.Cli.Tests.csproj `
+  --configuration Release --no-build --no-restore `
+  --filter "FullyQualifiedName~StubTranslationServerTests"
+```
+
+For the manual two-pane scenario, configure a separately controlled chat-completion-compatible test
+provider that can delay a response, then run:
 
 ```powershell
 Write-Output "This response is intentionally delayed."
@@ -178,8 +190,10 @@ Re-run `tt on`; consent is requested again for the new session generation.
 
 ## Provider Failure and Overload
 
-With a local deterministic stub, exercise timeout, HTTP 401, HTTP 429, HTTP 5xx, invalid JSON, empty
-translation, disconnect, and a provider that ignores cancellation.
+The local deterministic stub covers timeout, HTTP 401/403, HTTP 408/429/5xx, redirect, invalid JSON,
+empty and oversized responses without public-network access. Run the stub test command above, or
+run the complete offline matrix with `./scripts/validate.ps1`. For manual pane observations, use a
+separately controlled test endpoint; do not use production credentials or sensitive terminal text.
 
 Expected:
 

@@ -4,6 +4,7 @@ using System.Text;
 using TerminalTranslator.Cli.Configuration;
 using TerminalTranslator.Cli.Providers;
 using TerminalTranslator.Cli.Tests.TestDoubles;
+using TerminalTranslator.Core.Privacy;
 using TerminalTranslator.Core.Translation;
 
 namespace TerminalTranslator.Cli.Tests.Contract;
@@ -109,6 +110,72 @@ public sealed class TranslationProviderContractTests
         TranslationRequest request = new(1, 1, "One useful sentence.", "en", "zh-Hans", TimeSpan.FromSeconds(1));
         Assert.AreEqual("?", (await first.TranslateAsync(request, CancellationToken.None)).TranslatedText);
         Assert.AreEqual("?", (await second.TranslateAsync(request, CancellationToken.None)).TranslatedText);
+    }
+
+    [TestMethod]
+    public async Task TranslateAsync_SecondSecretGatePreventsHttpSerialization()
+    {
+        TestHttpMessageHandler handler = new((_, _) =>
+            throw new AssertFailedException("Secret-bearing text must not reach HTTP."));
+        using HttpClient client = new(handler);
+        ProviderSettings settings = ProviderSettings.Create(
+            new Uri("https://provider.example/chat/completions"),
+            "model",
+            "KEY",
+            TimeSpan.FromSeconds(1));
+        ChatCompletionTranslationProvider provider = new(
+            settings,
+            client,
+            _ => "credential",
+            new SecretDetector(),
+            _ => true);
+
+        TranslationProviderException exception = await Assert.ThrowsExactlyAsync<TranslationProviderException>(() =>
+            provider.TranslateAsync(
+                new TranslationRequest(
+                    1,
+                    1,
+                    "API_KEY=sk-test-1234567890abcdefghijklmnop",
+                    "en",
+                    "zh-Hans",
+                    TimeSpan.FromSeconds(1)),
+                CancellationToken.None));
+
+        Assert.AreEqual(TranslationErrorCode.Canceled, exception.Code);
+        Assert.AreEqual(0, handler.Requests.Count);
+    }
+
+    [TestMethod]
+    public async Task TranslateAsync_UnauthorizedGenerationPreventsHttpSerialization()
+    {
+        TestHttpMessageHandler handler = new((_, _) =>
+            throw new AssertFailedException("Unauthorized generation must not reach HTTP."));
+        using HttpClient client = new(handler);
+        ProviderSettings settings = ProviderSettings.Create(
+            new Uri("https://provider.example/chat/completions"),
+            "model",
+            "KEY",
+            TimeSpan.FromSeconds(1));
+        ChatCompletionTranslationProvider provider = new(
+            settings,
+            client,
+            _ => "credential",
+            new SecretDetector(),
+            _ => false);
+
+        TranslationProviderException exception = await Assert.ThrowsExactlyAsync<TranslationProviderException>(() =>
+            provider.TranslateAsync(
+                new TranslationRequest(
+                    4,
+                    1,
+                    "The operation completed successfully.",
+                    "en",
+                    "zh-Hans",
+                    TimeSpan.FromSeconds(1)),
+                CancellationToken.None));
+
+        Assert.AreEqual(TranslationErrorCode.Canceled, exception.Code);
+        Assert.AreEqual(0, handler.Requests.Count);
     }
 
     private sealed class StubProvider(string result) : ITranslationProvider

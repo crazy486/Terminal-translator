@@ -16,12 +16,10 @@ public sealed class MinimalControlPipeServer(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            await using NamedPipeServerStream pipe = new(
+            await using NamedPipeServerStream pipe = CurrentUserPipeFactory.CreateServer(
                 pipeName,
                 PipeDirection.InOut,
-                1,
-                PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous);
+                maxInstances: 1);
             _activePipe = pipe;
             try
             {

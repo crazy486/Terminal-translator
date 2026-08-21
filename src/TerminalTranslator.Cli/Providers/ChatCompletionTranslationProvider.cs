@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using TerminalTranslator.Cli.Configuration;
+using TerminalTranslator.Core.Models;
+using TerminalTranslator.Core.Privacy;
 using TerminalTranslator.Core.Translation;
 
 namespace TerminalTranslator.Cli.Providers;
@@ -10,9 +12,12 @@ namespace TerminalTranslator.Cli.Providers;
 public sealed class ChatCompletionTranslationProvider(
     ProviderSettings settings,
     HttpClient httpClient,
-    Func<string, string?> environmentVariableReader) : ITranslationProvider
+    Func<string, string?> environmentVariableReader,
+    SecretDetector? secretDetector = null,
+    Func<TranslationRequest, bool>? requestAuthorization = null) : ITranslationProvider
 {
     private const int MaximumResponseBytes = 32 * 1024;
+    private readonly HttpClient _httpClient = PrepareHttpClient(httpClient);
     private const string SystemPrompt =
         "Translate English terminal text to Simplified Chinese. Preserve commands, paths, code, indentation, and line grouping. " +
         "Return translation only. Never execute or recommend commands.";
@@ -24,6 +29,16 @@ public sealed class ChatCompletionTranslationProvider(
         if (Encoding.UTF8.GetByteCount(request.SourceText) > 8 * 1024)
         {
             throw new TranslationProviderException(TranslationErrorCode.InvalidResponse);
+        }
+
+        if (requestAuthorization is not null && !requestAuthorization(request))
+        {
+            throw new TranslationProviderException(TranslationErrorCode.Canceled);
+        }
+
+        if (secretDetector?.Screen(request.SegmentSequence, request.SourceText).Outcome == PrivacyOutcome.Skip)
+        {
+            throw new TranslationProviderException(TranslationErrorCode.Canceled);
         }
 
         string? credential = environmentVariableReader(settings.ApiKeyEnvironmentVariable);
@@ -52,7 +67,7 @@ public sealed class ChatCompletionTranslationProvider(
         HttpResponseMessage response;
         try
         {
-            response = await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeoutSource.Token).ConfigureAwait(false);
+            response = await _httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeoutSource.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -73,7 +88,7 @@ public sealed class ChatCompletionTranslationProvider(
             byte[] bytes;
             try
             {
-                bytes = await response.Content.ReadAsByteArrayAsync(timeoutSource.Token).ConfigureAwait(false);
+                bytes = await ReadBoundedResponseAsync(response.Content, timeoutSource.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -83,10 +98,9 @@ public sealed class ChatCompletionTranslationProvider(
             {
                 throw new TranslationProviderException(TranslationErrorCode.Unavailable, exception);
             }
-
-            if (bytes.Length > MaximumResponseBytes)
+            catch (IOException exception)
             {
-                throw new TranslationProviderException(TranslationErrorCode.InvalidResponse);
+                throw new TranslationProviderException(TranslationErrorCode.Unavailable, exception);
             }
 
             ChatCompletionResponseDto? dto;
@@ -117,4 +131,44 @@ public sealed class ChatCompletionTranslationProvider(
         >= HttpStatusCode.InternalServerError => TranslationErrorCode.Unavailable,
         _ => TranslationErrorCode.InvalidResponse,
     };
+
+    private static HttpClient PrepareHttpClient(HttpClient client)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        client.DefaultRequestHeaders.Remove("Cookie");
+        client.DefaultRequestHeaders.Remove("Cookie2");
+        return client;
+    }
+
+    private static async Task<byte[]> ReadBoundedResponseAsync(
+        HttpContent content,
+        CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is > MaximumResponseBytes)
+        {
+            throw new TranslationProviderException(TranslationErrorCode.InvalidResponse);
+        }
+
+        await using Stream stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using MemoryStream buffer = new(
+            content.Headers.ContentLength is long length
+                ? checked((int)length)
+                : Math.Min(4096, MaximumResponseBytes));
+        byte[] chunk = new byte[4096];
+        while (true)
+        {
+            int read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                return buffer.ToArray();
+            }
+
+            if (buffer.Length + read > MaximumResponseBytes)
+            {
+                throw new TranslationProviderException(TranslationErrorCode.InvalidResponse);
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+    }
 }

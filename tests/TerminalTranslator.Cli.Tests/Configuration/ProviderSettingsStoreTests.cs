@@ -96,6 +96,33 @@ public sealed class ProviderSettingsStoreTests
         Assert.IsTrue(settings.RequestTimeoutIsDefault);
     }
 
+    [TestMethod]
+    public async Task SaveAsync_UsesExplicitAllowListAndNeverPersistsCredentialValue()
+    {
+        using TemporaryDirectory temporary = new();
+        ProviderSettingsStore store = new(temporary.Path);
+        const string credential = "credential-value-must-remain-outside-json";
+        string? previous = Environment.GetEnvironmentVariable("TT_SETTINGS_SECRET");
+        try
+        {
+            Environment.SetEnvironmentVariable("TT_SETTINGS_SECRET", credential);
+            await store.SaveAsync(ProviderSettings.Create(
+                new Uri("https://provider.example/chat/completions"),
+                "model-a",
+                "TT_SETTINGS_SECRET",
+                TimeSpan.FromSeconds(1)));
+
+            string json = await File.ReadAllTextAsync(store.SettingsPath);
+            Assert.IsFalse(json.Contains(credential, StringComparison.Ordinal));
+            Assert.IsFalse(json.Contains("fingerprint", StringComparison.OrdinalIgnoreCase));
+            StringAssert.Contains(json, "TT_SETTINGS_SECRET");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TT_SETTINGS_SECRET", previous);
+        }
+    }
+
     private static ProviderSettings CreateSettings() => ProviderSettings.Create(
         new Uri("https://api.deepseek.com/chat/completions"),
         "deepseek-v4-flash",

@@ -18,7 +18,7 @@ public sealed class MinimalEnableRequestSender(string pipeName) : IEnableRequest
     {
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(2));
-        await using NamedPipeClientStream pipe = new(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        await using NamedPipeClientStream pipe = CurrentUserPipeFactory.CreateClient(pipeName, PipeDirection.InOut);
         try
         {
             await pipe.ConnectAsync(1000, deadline.Token).ConfigureAwait(false);
@@ -89,7 +89,8 @@ public static class OnCommand
             }
 
             string pipeName = SessionPipeNames.Control(sessionId, nonce);
-            IEnableRequestSender sender = senderFactory?.Invoke(sessionId, nonce) ?? new MinimalEnableRequestSender(pipeName);
+            IEnableRequestSender sender = senderFactory?.Invoke(sessionId, nonce) ??
+                new ControlEnableRequestSender(new ControlPipeClient(pipeName, sessionId, nonce));
             try
             {
                 bool enabled = await sender.SendAsync(
@@ -104,7 +105,7 @@ public static class OnCommand
                 await standardOutput.WriteLineAsync("Translation enabled.").ConfigureAwait(false);
                 return 0;
             }
-            catch (Exception exception) when (exception is IOException or TimeoutException)
+            catch (Exception exception) when (exception is IOException or InvalidDataException or TimeoutException)
             {
                 await standardError.WriteLineAsync("No live translation session.").ConfigureAwait(false);
                 return 5;
@@ -112,5 +113,17 @@ public static class OnCommand
         });
 
         return command;
+    }
+}
+
+internal sealed class ControlEnableRequestSender(IControlPipeClient client) : IEnableRequestSender
+{
+    public async Task<bool> SendAsync(ControlRequestMessage request, CancellationToken cancellationToken)
+    {
+        ControlResultMessage result = await client.EnableAsync(
+            request.ProviderFingerprint ?? string.Empty,
+            request.Consent == true,
+            cancellationToken).ConfigureAwait(false);
+        return result.Ok && result.State == "enabled";
     }
 }
