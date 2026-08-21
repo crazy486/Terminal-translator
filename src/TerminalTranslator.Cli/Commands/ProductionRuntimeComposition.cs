@@ -12,11 +12,13 @@ public static class ProductionRuntimeComposition
         ITranslationEventSink eventSink,
         TimeSpan providerTimeout,
         Func<TranslationErrorCode, CancellationToken, ValueTask>? providerErrorSink = null,
-        int viewportColumns = 120) =>
+        int viewportColumns = 120,
+        Func<string, bool>? commandEchoFilter = null) =>
         new(
             sessionId,
             new VtTextExtractor(viewportColumns),
             new EnglishCandidateClassifier(),
             new TranslationCoordinator(provider, eventSink, new SystemClock(), providerTimeout),
-            providerErrorSink);
+            providerErrorSink,
+            commandEchoFilter: commandEchoFilter);
 }

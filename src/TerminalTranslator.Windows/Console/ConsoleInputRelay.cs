@@ -1,6 +1,9 @@
 namespace TerminalTranslator.Windows.Console;
 
-public sealed class ConsoleInputRelay(Stream programInput, Stream pseudoConsoleInput)
+public sealed class ConsoleInputRelay(
+    Stream programInput,
+    Stream pseudoConsoleInput,
+    Action<ReadOnlyMemory<byte>>? inputObserver = null)
 {
     public async Task CopyAsync(CancellationToken cancellationToken)
     {
@@ -13,6 +16,7 @@ public sealed class ConsoleInputRelay(Stream programInput, Stream pseudoConsoleI
                 break;
             }
 
+            inputObserver?.Invoke(buffer.AsMemory(0, count));
             await pseudoConsoleInput.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
             await pseudoConsoleInput.FlushAsync(cancellationToken).ConfigureAwait(false);
         }

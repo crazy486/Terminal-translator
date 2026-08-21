@@ -76,7 +76,7 @@ public sealed partial class EnglishCandidateClassifier
     [GeneratedRegex(@"^(?:>\s*)*(?:(?:git|npm|npx|dotnet|python|pip|pwsh|powershell|tt|cd|dir|ls)\s+[-\w]|[A-Za-z]+-[A-Za-z]+\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CommandRegex();
 
-    [GeneratedRegex(@"^PS\s+(?:[A-Za-z]:\\|\\\\|/).*>\s*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?:PS\s+)?(?:[A-Za-z]:\\|\\\\|/)[^\r\n>]*>(?:\s*>)*\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PowerShellPromptRegex();
 
     [GeneratedRegex(@"^Translation\s+(?:enabled|disabled)\.?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

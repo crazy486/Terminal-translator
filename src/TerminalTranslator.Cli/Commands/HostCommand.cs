@@ -144,6 +144,7 @@ public static class HostCommand
             Task eventReady = eventServer.WaitForClientAsync(runtimeCancellation.Token);
 
             ChatCompletionTranslationProvider provider = new(settings, httpClient, Environment.GetEnvironmentVariable);
+            SubmittedCommandTracker submittedCommands = new();
             await using ProductionTranslationPipeline pipeline =
                 ProductionRuntimeComposition.CreateTranslationPipeline(
                     sessionId,
@@ -156,7 +157,8 @@ public static class HostCommand
                             SessionProtocol.Version,
                             ToProtocolErrorCode(code)),
                         token)),
-                    initialSize.X);
+                    initialSize.X,
+                    submittedCommands.IsEcho);
             await using MinimalControlPipeServer controlServer = new(
                 controlPipeName,
                 requestedSession,
@@ -175,7 +177,10 @@ public static class HostCommand
             using ConsoleModeScope? consoleMode = ConsoleModeScope.TryEnterRawInput();
             using CancellationTokenSource interactiveCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(runtimeCancellation.Token);
-            ConsoleInputRelay inputRelay = new(global::System.Console.OpenStandardInput(), pseudoConsole.Input);
+            ConsoleInputRelay inputRelay = new(
+                global::System.Console.OpenStandardInput(),
+                pseudoConsole.Input,
+                submittedCommands.Observe);
             ConsoleOutputRelay outputRelay = new(
                 pseudoConsole.Output,
                 global::System.Console.OpenStandardOutput(),

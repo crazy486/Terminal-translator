@@ -13,6 +13,7 @@ public sealed class ProductionTranslationPipeline : INonBlockingAnalysisSink, IA
     private readonly EnglishCandidateClassifier _classifier;
     private readonly TranslationCoordinator _coordinator;
     private readonly Func<TranslationErrorCode, CancellationToken, ValueTask>? _providerErrorSink;
+    private readonly Func<string, bool>? _commandEchoFilter;
     private readonly Channel<byte[]> _analysis;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _worker;
@@ -25,13 +26,15 @@ public sealed class ProductionTranslationPipeline : INonBlockingAnalysisSink, IA
         EnglishCandidateClassifier classifier,
         TranslationCoordinator coordinator,
         Func<TranslationErrorCode, CancellationToken, ValueTask>? providerErrorSink = null,
-        int analysisCapacity = 64)
+        int analysisCapacity = 64,
+        Func<string, bool>? commandEchoFilter = null)
     {
         _sessionId = sessionId;
         _extractor = extractor;
         _classifier = classifier;
         _coordinator = coordinator;
         _providerErrorSink = providerErrorSink;
+        _commandEchoFilter = commandEchoFilter;
         _analysis = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(analysisCapacity)
         {
             SingleReader = true,
@@ -116,6 +119,11 @@ public sealed class ProductionTranslationPipeline : INonBlockingAnalysisSink, IA
     {
         foreach (ExtractedText extracted in extractedItems)
         {
+            if (_commandEchoFilter?.Invoke(extracted.Text) is true)
+            {
+                continue;
+            }
+
             CandidateClassification classification = _classifier.Classify(
                 extracted.Text,
                 extracted.Layout,

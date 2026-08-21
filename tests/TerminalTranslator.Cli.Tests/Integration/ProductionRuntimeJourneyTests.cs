@@ -46,9 +46,15 @@ public sealed class ProductionRuntimeJourneyTests
         const string fingerprint = "interactive-fake-provider";
         AwaitableProvider provider = new();
         RecordingEventSink sink = new();
+        SubmittedCommandTracker submittedCommands = new();
         using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(20));
         await using ProductionTranslationPipeline pipeline = ProductionRuntimeComposition.CreateTranslationPipeline(
-            session, provider, sink, TimeSpan.FromSeconds(2), viewportColumns: 60);
+            session,
+            provider,
+            sink,
+            TimeSpan.FromSeconds(2),
+            viewportColumns: 60,
+            commandEchoFilter: submittedCommands.IsEcho);
         await using MinimalControlPipeServer controlServer = new(
             controlPipe, sessionId, fingerprint,
             _ =>
@@ -70,10 +76,11 @@ public sealed class ProductionRuntimeJourneyTests
         bool enabled = await new MinimalEnableRequestSender(controlPipe).SendAsync(
             new ControlRequestMessage("enable", SessionProtocol.Version, sessionId, fingerprint, true),
             cancellation.Token);
-        await conPty.Input.WriteAsync(
-            Encoding.UTF8.GetBytes("Write-Output 'The build failed because a required configuration file is missing.'\r\n"),
+        await RelayInputAsync(
+            conPty.Input,
+            submittedCommands,
+            "Write-Output 'The build failed because a required configuration file is missing.'\r\n",
             cancellation.Token);
-        await conPty.Input.FlushAsync(cancellation.Token);
         Task providerOrTimeout = await Task.WhenAny(
             provider.ExpectedRequest.Task,
             Task.Delay(TimeSpan.FromSeconds(5)));
@@ -88,13 +95,26 @@ public sealed class ProductionRuntimeJourneyTests
         ];
         foreach (string acceptanceCommand in acceptanceCommands)
         {
-            await conPty.Input.WriteAsync(Encoding.UTF8.GetBytes(acceptanceCommand), cancellation.Token);
-            await conPty.Input.FlushAsync(cancellation.Token);
+            await RelayInputAsync(conPty.Input, submittedCommands, acceptanceCommand, cancellation.Token);
             await Task.Delay(400, cancellation.Token);
         }
 
-        await conPty.Input.WriteAsync("exit 0\r\n"u8.ToArray(), cancellation.Token);
-        await conPty.Input.FlushAsync(cancellation.Token);
+        await RelayInputAsync(
+            conPty.Input,
+            submittedCommands,
+            "$value = Read-Host \"Paste Unicode text\"\r\n",
+            cancellation.Token);
+        await Task.Delay(250, cancellation.Token);
+        await RelayInputAsync(conPty.Input, submittedCommands, "high-fidelity-paste\r\n", cancellation.Token);
+        await Task.Delay(400, cancellation.Token);
+        await RelayInputAsync(
+            conPty.Input,
+            submittedCommands,
+            "Write-Output 'The captured value remains ordinary English output.'\r\n",
+            cancellation.Token);
+        await Task.Delay(400, cancellation.Token);
+
+        await RelayInputAsync(conPty.Input, submittedCommands, "exit 0\r\n", cancellation.Token);
         int exitCode = await conPty.WaitForExitAsync(cancellation.Token);
         await conPty.CompleteInputAsync();
         conPty.ClosePseudoConsole();
@@ -118,7 +138,10 @@ public sealed class ProductionRuntimeJourneyTests
         StringAssert.Contains(allCandidates, "ERROR: The application failed to start because the required configuration file could not be found.");
         StringAssert.Contains(allCandidates, "Unicode round trip: 你好，世界");
         StringAssert.Contains(allCandidates, "modified: ProductionRuntimeJourneyTests.cs RunnableUserStory1AcceptanceTests.cs");
+        StringAssert.Contains(allCandidates, "The captured value remains ordinary English output.");
         Assert.IsFalse(provider.Requests.Any(request => request.StartsWith('>')), allCandidates);
+        Assert.IsFalse(provider.Requests.Any(request => request.Contains("$value = Read-Host", StringComparison.Ordinal)), allCandidates);
+        Assert.IsFalse(provider.Requests.Any(IsPowerShellPrompt), allCandidates);
         CollectionAssert.Contains(provider.Requests, "Unicode round trip: 你好，世界");
         CollectionAssert.Contains(
             provider.Requests,
@@ -376,6 +399,24 @@ public sealed class ProductionRuntimeJourneyTests
         }
 
         return true;
+    }
+
+    private static async Task RelayInputAsync(
+        Stream pseudoConsoleInput,
+        SubmittedCommandTracker submittedCommands,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        await new ConsoleInputRelay(
+            new MemoryStream(Encoding.UTF8.GetBytes(text)),
+            pseudoConsoleInput,
+            submittedCommands.Observe).CopyAsync(cancellationToken);
+    }
+
+    private static bool IsPowerShellPrompt(string candidate)
+    {
+        string trimmed = candidate.Trim();
+        return trimmed.StartsWith("PS ", StringComparison.OrdinalIgnoreCase) && trimmed.EndsWith('>');
     }
 
     private static string Escape(byte[] bytes) => Encoding.UTF8.GetString(bytes)

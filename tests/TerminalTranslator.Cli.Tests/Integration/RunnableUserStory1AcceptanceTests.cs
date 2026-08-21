@@ -49,6 +49,7 @@ public sealed class RunnableUserStory1AcceptanceTests
         });
         using HttpClient httpClient = new(handler);
         ChatCompletionTranslationProvider provider = new(settings, httpClient, _ => "fake-secret");
+        SubmittedCommandTracker submittedCommands = new();
         using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(25));
 
         await using EventPipeServer eventServer = new(eventPipeName, sessionId, nonce);
@@ -57,7 +58,11 @@ public sealed class RunnableUserStory1AcceptanceTests
             eventPipeName, sessionId, nonce, TimeSpan.FromSeconds(2), cancellation.Token);
         await eventReady;
         await using ProductionTranslationPipeline pipeline = ProductionRuntimeComposition.CreateTranslationPipeline(
-            session, provider, eventServer, settings.RequestTimeout);
+            session,
+            provider,
+            eventServer,
+            settings.RequestTimeout,
+            commandEchoFilter: submittedCommands.IsEcho);
         await using MinimalControlPipeServer controlServer = new(
             controlPipeName,
             sessionId,
@@ -92,10 +97,11 @@ public sealed class RunnableUserStory1AcceptanceTests
                 cancellation.Token);
             state = await stateTask;
 
-            await conPty.Input.WriteAsync(
-                Encoding.UTF8.GetBytes($"Write-Output '{sourceText}'\r\n"),
+            await RelayInputAsync(
+                conPty.Input,
+                submittedCommands,
+                $"Write-Output '{sourceText}'\r\n",
                 cancellation.Token);
-            await conPty.Input.FlushAsync(cancellation.Token);
             translation = await ReadTranslationForSourceAsync(
                 companion, sourceText, TimeSpan.FromSeconds(7), cancellation.Token);
         }
@@ -104,8 +110,7 @@ public sealed class RunnableUserStory1AcceptanceTests
             using CancellationTokenSource cleanup = new(TimeSpan.FromSeconds(5));
             try
             {
-                await conPty.Input.WriteAsync("exit 0\r\n"u8.ToArray(), cleanup.Token);
-                await conPty.Input.FlushAsync(cleanup.Token);
+                await RelayInputAsync(conPty.Input, submittedCommands, "exit 0\r\n", cleanup.Token);
                 childExitCode = await conPty.WaitForExitAsync(cleanup.Token);
                 await conPty.CompleteInputAsync();
                 conPty.ClosePseudoConsole();
@@ -182,6 +187,18 @@ public sealed class RunnableUserStory1AcceptanceTests
         }
 
         return true;
+    }
+
+    private static async Task RelayInputAsync(
+        Stream pseudoConsoleInput,
+        SubmittedCommandTracker submittedCommands,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        await new ConsoleInputRelay(
+            new MemoryStream(Encoding.UTF8.GetBytes(text)),
+            pseudoConsoleInput,
+            submittedCommands.Observe).CopyAsync(cancellationToken);
     }
 
     private static string Escape(byte[] bytes) => Encoding.UTF8.GetString(bytes)
