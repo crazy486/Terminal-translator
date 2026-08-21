@@ -36,12 +36,17 @@ public static class ConfigureCommand
                     throw new ArgumentException("Endpoint must be an absolute URI.");
                 }
 
+                int? configuredTimeout = parseResult.GetValue(timeout);
+                bool usesDefaultTimeout = configuredTimeout is null;
                 ProviderSettings settings = ProviderSettings.Create(
                     endpointUri,
                     parseResult.GetRequiredValue(model),
                     parseResult.GetRequiredValue(apiKeyEnvironmentVariable),
-                    TimeSpan.FromMilliseconds(parseResult.GetValue(timeout) ?? 1500),
-                    parseResult.GetValue(allowLoopbackHttp));
+                    usesDefaultTimeout
+                        ? ProviderSettings.DefaultRequestTimeout
+                        : TimeSpan.FromMilliseconds(configuredTimeout!.Value),
+                    parseResult.GetValue(allowLoopbackHttp),
+                    usesDefaultTimeout);
                 await settingsStore.SaveAsync(settings, cancellationToken).ConfigureAwait(false);
                 await standardOutput.WriteLineAsync(
                     $"Configured provider host={settings.Endpoint.Host} model={settings.Model} key-env={settings.ApiKeyEnvironmentVariable} settings={settingsStore.SettingsPath}").ConfigureAwait(false);

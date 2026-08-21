@@ -12,6 +12,7 @@ public sealed class ProductionTranslationPipeline : INonBlockingAnalysisSink, IA
     private readonly VtTextExtractor _extractor;
     private readonly EnglishCandidateClassifier _classifier;
     private readonly TranslationCoordinator _coordinator;
+    private readonly Func<TranslationErrorCode, CancellationToken, ValueTask>? _providerErrorSink;
     private readonly Channel<byte[]> _analysis;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _worker;
@@ -23,12 +24,14 @@ public sealed class ProductionTranslationPipeline : INonBlockingAnalysisSink, IA
         VtTextExtractor extractor,
         EnglishCandidateClassifier classifier,
         TranslationCoordinator coordinator,
+        Func<TranslationErrorCode, CancellationToken, ValueTask>? providerErrorSink = null,
         int analysisCapacity = 64)
     {
         _sessionId = sessionId;
         _extractor = extractor;
         _classifier = classifier;
         _coordinator = coordinator;
+        _providerErrorSink = providerErrorSink;
         _analysis = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(analysisCapacity)
         {
             SingleReader = true,
@@ -42,6 +45,8 @@ public sealed class ProductionTranslationPipeline : INonBlockingAnalysisSink, IA
     public bool IsEnabled => Volatile.Read(ref _enabled) != 0;
 
     public void Enable() => Volatile.Write(ref _enabled, 1);
+
+    public void Resize(int viewportColumns) => _extractor.Resize(viewportColumns);
 
     public bool TryOffer(ReadOnlyMemory<byte> bytes)
     {
@@ -57,20 +62,51 @@ public sealed class ProductionTranslationPipeline : INonBlockingAnalysisSink, IA
     {
         try
         {
-            await foreach (byte[] bytes in _analysis.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            while (await _analysis.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                if (!IsEnabled)
+                while (_analysis.Reader.TryRead(out byte[]? bytes))
                 {
-                    continue;
+                    await ProcessBytesAsync(bytes, cancellationToken).ConfigureAwait(false);
                 }
 
-                await TranslateAsync(_extractor.Feed(bytes), cancellationToken).ConfigureAwait(false);
-                await Task.Delay(TimeSpan.FromMilliseconds(120), cancellationToken).ConfigureAwait(false);
-                await TranslateAsync(_extractor.FlushIdle(), cancellationToken).ConfigureAwait(false);
+                while (true)
+                {
+                    using CancellationTokenSource idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    idle.CancelAfter(TimeSpan.FromMilliseconds(120));
+                    try
+                    {
+                        byte[] bytes = await _analysis.Reader.ReadAsync(idle.Token).ConfigureAwait(false);
+                        await ProcessBytesAsync(bytes, cancellationToken).ConfigureAwait(false);
+                        while (_analysis.Reader.TryRead(out byte[]? queuedBytes))
+                        {
+                            await ProcessBytesAsync(queuedBytes, cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        await TranslateAsync(_extractor.FlushIdle(), cancellationToken).ConfigureAwait(false);
+                        break;
+                    }
+                    catch (ChannelClosedException)
+                    {
+                        await TranslateAsync(_extractor.Flush(), cancellationToken).ConfigureAwait(false);
+                        return;
+                    }
+                }
             }
+
+            await TranslateAsync(_extractor.Flush(), cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+    }
+
+    private async Task ProcessBytesAsync(byte[] bytes, CancellationToken cancellationToken)
+    {
+        if (IsEnabled)
+        {
+            await TranslateAsync(_extractor.Feed(bytes), cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -103,9 +139,12 @@ public sealed class ProductionTranslationPipeline : INonBlockingAnalysisSink, IA
             {
                 await _coordinator.TranslateAsync(segment, cancellationToken).ConfigureAwait(false);
             }
-            catch (TranslationProviderException)
+            catch (TranslationProviderException exception)
             {
-                // Provider failure isolation is intentionally content-free. Full aggregation is US4.
+                if (_providerErrorSink is not null)
+                {
+                    await _providerErrorSink(exception.Code, cancellationToken).ConfigureAwait(false);
+                }
             }
         }
     }

@@ -137,6 +137,7 @@ public static class HostCommand
         using CancellationTokenSource runtimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
+            Coord initialSize = ReadInitialSize();
             string eventPipeName = SessionPipeNames.Event(requestedSession, nonce);
             string controlPipeName = SessionPipeNames.Control(requestedSession, nonce);
             await using EventPipeServer eventServer = new(eventPipeName, requestedSession, nonce);
@@ -145,7 +146,17 @@ public static class HostCommand
             ChatCompletionTranslationProvider provider = new(settings, httpClient, Environment.GetEnvironmentVariable);
             await using ProductionTranslationPipeline pipeline =
                 ProductionRuntimeComposition.CreateTranslationPipeline(
-                    sessionId, provider, eventServer, settings.RequestTimeout);
+                    sessionId,
+                    provider,
+                    eventServer,
+                    settings.RequestTimeout,
+                    (code, token) => new ValueTask(eventServer.PublishAsync(
+                        new StatusEventMessage(
+                            "provider-error",
+                            SessionProtocol.Version,
+                            ToProtocolErrorCode(code)),
+                        token)),
+                    initialSize.X);
             await using MinimalControlPipeServer controlServer = new(
                 controlPipeName,
                 requestedSession,
@@ -159,8 +170,8 @@ public static class HostCommand
                 });
             Task controlTask = controlServer.RunAsync(runtimeCancellation.Token);
 
-            Coord initialSize = ReadInitialSize();
             await using ConPtySession pseudoConsole = ConPtySession.StartPowerShell(workingDirectory, initialSize);
+            using ConsoleEncodingScope consoleEncoding = ConsoleEncodingScope.EnterUtf8();
             using ConsoleModeScope? consoleMode = ConsoleModeScope.TryEnterRawInput();
             using CancellationTokenSource interactiveCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(runtimeCancellation.Token);
@@ -169,7 +180,9 @@ public static class HostCommand
                 pseudoConsole.Output,
                 global::System.Console.OpenStandardOutput(),
                 pipeline);
-            PseudoConsoleResizeMonitor resizeMonitor = new(pseudoConsole);
+            PseudoConsoleResizeMonitor resizeMonitor = new(
+                pseudoConsole,
+                resized: (columns, _) => pipeline.Resize(columns));
             Task inputTask = inputRelay.CopyAsync(interactiveCancellation.Token);
             Task outputTask = outputRelay.CopyAsync(runtimeCancellation.Token);
             Task resizeTask = resizeMonitor.RunAsync(interactiveCancellation.Token);
@@ -220,6 +233,17 @@ public static class HostCommand
             return new Coord(120, 30);
         }
     }
+
+    private static string ToProtocolErrorCode(TranslationErrorCode code) => code switch
+    {
+        TranslationErrorCode.Canceled => "canceled",
+        TranslationErrorCode.Timeout => "timeout",
+        TranslationErrorCode.Authentication => "authentication",
+        TranslationErrorCode.RateLimited => "rate-limited",
+        TranslationErrorCode.Unavailable => "unavailable",
+        TranslationErrorCode.InvalidResponse => "invalid-response",
+        _ => "unknown",
+    };
 
     private static async Task ObserveCancellationAsync(Task task, TimeSpan? maximumWait = null)
     {

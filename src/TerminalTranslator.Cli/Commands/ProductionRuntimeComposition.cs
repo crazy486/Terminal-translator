@@ -10,10 +10,13 @@ public static class ProductionRuntimeComposition
         Guid sessionId,
         ITranslationProvider provider,
         ITranslationEventSink eventSink,
-        TimeSpan providerTimeout) =>
+        TimeSpan providerTimeout,
+        Func<TranslationErrorCode, CancellationToken, ValueTask>? providerErrorSink = null,
+        int viewportColumns = 120) =>
         new(
             sessionId,
-            new VtTextExtractor(),
+            new VtTextExtractor(viewportColumns),
             new EnglishCandidateClassifier(),
-            new TranslationCoordinator(provider, eventSink, new SystemClock(), providerTimeout));
+            new TranslationCoordinator(provider, eventSink, new SystemClock(), providerTimeout),
+            providerErrorSink);
 }

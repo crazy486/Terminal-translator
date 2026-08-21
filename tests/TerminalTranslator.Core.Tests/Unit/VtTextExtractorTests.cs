@@ -40,6 +40,19 @@ public sealed class VtTextExtractorTests
     }
 
     [TestMethod]
+    public void Feed_DoesNotJoinDistinctLowercaseLogicalLines()
+    {
+        VtTextExtractor extractor = new();
+
+        IReadOnlyList<ExtractedText> result = extractor.Feed(
+            Encoding.UTF8.GetBytes("First complete line\r\nsecond independent line\r\n"));
+
+        CollectionAssert.AreEqual(
+            new[] { "First complete line", "second independent line" },
+            result.Select(item => item.Text).ToArray());
+    }
+
+    [TestMethod]
     public void Feed_SkipsCandidateLargerThanEightKiBUtf8()
     {
         VtTextExtractor extractor = new();

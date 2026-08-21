@@ -66,11 +66,19 @@ public sealed class ProviderSettingsStore
             throw new InvalidDataException("Provider settings are empty or invalid.");
         }
 
+        bool usesDefaultTimeout = settings.RequestTimeoutIsDefault == true ||
+            (settings.RequestTimeoutIsDefault is null &&
+             settings.RequestTimeout == ProviderSettings.LegacyDefaultRequestTimeout);
+        TimeSpan requestTimeout = usesDefaultTimeout
+            ? ProviderSettings.DefaultRequestTimeout
+            : settings.RequestTimeout;
+
         return ProviderSettings.Create(
             settings.Endpoint,
             settings.Model,
             settings.ApiKeyEnvironmentVariable,
-            settings.RequestTimeout,
-            settings.Endpoint.Scheme == Uri.UriSchemeHttp && settings.Endpoint.IsLoopback);
+            requestTimeout,
+            settings.Endpoint.Scheme == Uri.UriSchemeHttp && settings.Endpoint.IsLoopback,
+            usesDefaultTimeout);
     }
 }

@@ -11,9 +11,12 @@ public sealed partial record ProviderSettings(
     string ApiKeyEnvironmentVariable,
     TimeSpan RequestTimeout,
     string SourceLanguage,
-    string TargetLanguage)
+    string TargetLanguage,
+    bool? RequestTimeoutIsDefault = null)
 {
     public const string ChatCompletionAdapter = "chat-completion-http";
+    public static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(10);
+    internal static readonly TimeSpan LegacyDefaultRequestTimeout = TimeSpan.FromMilliseconds(1500);
 
     public string Fingerprint
     {
@@ -29,7 +32,8 @@ public sealed partial record ProviderSettings(
         string model,
         string apiKeyEnvironmentVariable,
         TimeSpan requestTimeout,
-        bool allowLoopbackHttp = false)
+        bool allowLoopbackHttp = false,
+        bool? requestTimeoutIsDefault = false)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         bool validScheme = endpoint.Scheme == Uri.UriSchemeHttps ||
@@ -63,7 +67,8 @@ public sealed partial record ProviderSettings(
             normalizedEnvironmentVariable,
             requestTimeout,
             "en",
-            "zh-Hans");
+            "zh-Hans",
+            requestTimeoutIsDefault);
     }
 
     [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant)]

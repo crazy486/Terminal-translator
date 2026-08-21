@@ -59,4 +59,28 @@ public sealed class VtTextExtractorInteractiveTests
         Assert.AreEqual(SourceBoundary.IdlePrompt, prompt.Boundary);
         Assert.AreEqual("Would you like to continue?", prompt.Text);
     }
+
+    [TestMethod]
+    public void Feed_RejoinsRightMarginVisualWrapIntoLogicalLine()
+    {
+        VtTextExtractor extractor = new(viewportColumns: 10);
+
+        IReadOnlyList<ExtractedText> result = extractor.Feed(
+            Encoding.UTF8.GetBytes("Productio\r\n\u001b[3;10HonRuntimeJourneyTests.cs\r\n"));
+
+        Assert.AreEqual(1, result.Count);
+        Assert.AreEqual("ProductionRuntimeJourneyTests.cs", result[0].Text);
+    }
+
+    [TestMethod]
+    public void Feed_TreatsSgrBetweenCarriageReturnAndLineFeedAsCrlf()
+    {
+        VtTextExtractor extractor = new(viewportColumns: 20);
+
+        IReadOnlyList<ExtractedText> result = extractor.Feed(
+            Encoding.UTF8.GetBytes("Warning text        \r\u001b[m\ncontinues here\r\n"));
+
+        Assert.AreEqual(1, result.Count);
+        Assert.AreEqual("Warning text continues here", result[0].Text);
+    }
 }

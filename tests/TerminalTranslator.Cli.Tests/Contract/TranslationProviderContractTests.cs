@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using TerminalTranslator.Cli.Configuration;
 using TerminalTranslator.Cli.Providers;
@@ -55,6 +56,52 @@ public sealed class TranslationProviderContractTests
     }
 
     [TestMethod]
+    public async Task TranslateAsync_DecodesRawUtf8ChineseResponse()
+    {
+        byte[] responseBytes = Encoding.UTF8.GetBytes(
+            "{\"id\":\"req-utf8\",\"choices\":[{\"message\":{\"content\":\"构建失败，因为缺少必需的配置文件。\"}}]}");
+        TestHttpMessageHandler handler = new((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(responseBytes)
+            {
+                Headers = { ContentType = new MediaTypeHeaderValue("application/json") },
+            },
+        }));
+        using HttpClient client = new(handler);
+        ProviderSettings settings = ProviderSettings.Create(
+            new Uri("https://provider.example/v1/chat/completions"), "model", "KEY", TimeSpan.FromSeconds(2));
+        ChatCompletionTranslationProvider provider = new(settings, client, _ => "secret");
+
+        TranslationResult result = await provider.TranslateAsync(
+            new TranslationRequest(1, 1, "The build failed.", "en", "zh-Hans", TimeSpan.FromSeconds(2)),
+            CancellationToken.None);
+
+        Assert.AreEqual("构建失败，因为缺少必需的配置文件。", result.TranslatedText);
+    }
+
+    [TestMethod]
+    public async Task TranslateAsync_MapsResponseBodyDeadlineToTimeout()
+    {
+        TestHttpMessageHandler handler = new((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new DelayedContent(
+                Encoding.UTF8.GetBytes("{\"choices\":[{\"message\":{\"content\":\"迟到的响应\"}}]}"),
+                TimeSpan.FromMilliseconds(300)),
+        }));
+        using HttpClient client = new(handler);
+        ProviderSettings settings = ProviderSettings.Create(
+            new Uri("https://provider.example/v1/chat/completions"), "model", "KEY", TimeSpan.FromMilliseconds(100));
+        ChatCompletionTranslationProvider provider = new(settings, client, _ => "secret");
+
+        TranslationProviderException exception = await Assert.ThrowsExactlyAsync<TranslationProviderException>(() =>
+            provider.TranslateAsync(
+                new TranslationRequest(1, 1, "The build failed.", "en", "zh-Hans", TimeSpan.FromMilliseconds(100)),
+                CancellationToken.None));
+
+        Assert.AreEqual(TranslationErrorCode.Timeout, exception.Code);
+    }
+
+    [TestMethod]
     public async Task CoordinatorCanSwapAdaptersWithoutChangingCoreContract()
     {
         ITranslationProvider first = new StubProvider("?");
@@ -68,5 +115,28 @@ public sealed class TranslationProviderContractTests
     {
         public Task<TranslationResult> TranslateAsync(TranslationRequest request, CancellationToken cancellationToken) =>
             Task.FromResult(new TranslationResult(result));
+    }
+
+    private sealed class DelayedContent(byte[] bytes, TimeSpan delay) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            SerializeAsync(stream, CancellationToken.None);
+
+        protected override Task SerializeToStreamAsync(
+            Stream stream,
+            TransportContext? context,
+            CancellationToken cancellationToken) => SerializeAsync(stream, cancellationToken);
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = bytes.Length;
+            return true;
+        }
+
+        private async Task SerializeAsync(Stream stream, CancellationToken cancellationToken)
+        {
+            await Task.Delay(delay, cancellationToken);
+            await stream.WriteAsync(bytes, cancellationToken);
+        }
     }
 }

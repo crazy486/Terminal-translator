@@ -70,7 +70,20 @@ public sealed class ChatCompletionTranslationProvider(
                 throw new TranslationProviderException(MapStatus(response.StatusCode));
             }
 
-            byte[] bytes = await response.Content.ReadAsByteArrayAsync(timeoutSource.Token).ConfigureAwait(false);
+            byte[] bytes;
+            try
+            {
+                bytes = await response.Content.ReadAsByteArrayAsync(timeoutSource.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TranslationProviderException(TranslationErrorCode.Timeout);
+            }
+            catch (HttpRequestException exception)
+            {
+                throw new TranslationProviderException(TranslationErrorCode.Unavailable, exception);
+            }
+
             if (bytes.Length > MaximumResponseBytes)
             {
                 throw new TranslationProviderException(TranslationErrorCode.InvalidResponse);

@@ -15,6 +15,19 @@ public sealed class EnglishCandidateClassifierTests
     public void Classify_AcceptsUsefulEnglish(string text) => Assert.IsTrue(Classify(text).IsEligible);
 
     [TestMethod]
+    [DataRow("The build failed because a required configuration file is missing.", TranslationPriority.High)]
+    [DataRow("The configuration file is missing and the application cannot start.", TranslationPriority.Normal)]
+    [DataRow("The build may fail because the configuration is incomplete.", TranslationPriority.Normal)]
+    [DataRow("ERROR: The application failed to start because the required configuration file could not be found.", TranslationPriority.High)]
+    public void Classify_AcceptsManualAcceptanceMessages(string text, TranslationPriority expectedPriority)
+    {
+        CandidateClassification classification = Classify(text);
+
+        Assert.IsTrue(classification.IsEligible);
+        Assert.AreEqual(expectedPriority, classification.Priority);
+    }
+
+    [TestMethod]
     [DataRow("\u5904\u7406\u5df2\u5b8c\u6210\u3002")]
     [DataRow("C:\\src\\project\\Program.cs")]
     [DataRow("npm install --save-dev package")]
@@ -22,6 +35,29 @@ public sealed class EnglishCandidateClassifierTests
     [DataRow("v10.0.400")]
     [DataRow("Status")]
     public void Classify_RejectsLowValueOrTechnicalText(string text) => Assert.IsFalse(Classify(text).IsEligible);
+
+    [TestMethod]
+    [DataRow("> Write-Output \"The build failed because configuration is missing.\"")]
+    [DataRow(">> > Write-Error \"The build failed because configuration is missing.\"")]
+    [DataRow("> git status")]
+    [DataRow("Translation enabled.")]
+    public void Classify_RejectsPowerShellCommandEchoAndTranslatorStatus(string text) =>
+        Assert.IsFalse(Classify(text).IsEligible);
+
+    [TestMethod]
+    public void Classify_AcceptsPowerShellErrorRecordEvenWhenItStartsWithCommandName()
+    {
+        const string errorRecord =
+            "Write-Error 'The configuration file is missing.'\n" +
+            " : The configuration file is missing.\n" +
+            "    + CategoryInfo : NotSpecified: (:) [Write-Error], WriteErrorException\n" +
+            "    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException";
+
+        CandidateClassification classification = Classify(errorRecord);
+
+        Assert.IsTrue(classification.IsEligible);
+        Assert.AreEqual(TranslationPriority.High, classification.Priority);
+    }
 
     [TestMethod]
     [DataRow("Continue? [y/N]")]

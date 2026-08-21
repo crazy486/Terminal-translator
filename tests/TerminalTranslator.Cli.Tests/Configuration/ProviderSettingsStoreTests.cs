@@ -60,6 +60,42 @@ public sealed class ProviderSettingsStoreTests
         Assert.IsFalse(error.ToString().Contains("DEEPSEEK_API_KEY", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public async Task ConfigureCommand_WithoutTimeout_UsesReliableDefault()
+    {
+        using TemporaryDirectory temporary = new();
+        ProviderSettingsStore store = new(temporary.Path);
+        using StringWriter output = new();
+        using StringWriter error = new();
+
+        int exitCode = await ConfigureCommand.Create(store, output, error).Parse(
+            [
+                "--endpoint", "https://api.deepseek.com/chat/completions",
+                "--model", "deepseek-v4-flash",
+                "--api-key-env", "DEEPSEEK_API_KEY",
+            ]).InvokeAsync();
+
+        ProviderSettings settings = (await store.LoadAsync())!;
+        Assert.AreEqual(0, exitCode, error.ToString());
+        Assert.AreEqual(ProviderSettings.DefaultRequestTimeout, settings.RequestTimeout);
+        Assert.IsTrue(settings.RequestTimeoutIsDefault);
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_MigratesLegacyDefaultTimeout()
+    {
+        using TemporaryDirectory temporary = new();
+        ProviderSettingsStore store = new(temporary.Path);
+        const string legacySettings =
+            "{\"adapter\":\"chat-completion-http\",\"endpoint\":\"https://api.deepseek.com/chat/completions\",\"model\":\"deepseek-v4-flash\",\"apiKeyEnvironmentVariable\":\"DEEPSEEK_API_KEY\",\"requestTimeout\":\"00:00:01.5000000\",\"sourceLanguage\":\"en\",\"targetLanguage\":\"zh-Hans\"}";
+        await File.WriteAllTextAsync(store.SettingsPath, legacySettings);
+
+        ProviderSettings settings = (await store.LoadAsync())!;
+
+        Assert.AreEqual(ProviderSettings.DefaultRequestTimeout, settings.RequestTimeout);
+        Assert.IsTrue(settings.RequestTimeoutIsDefault);
+    }
+
     private static ProviderSettings CreateSettings() => ProviderSettings.Create(
         new Uri("https://api.deepseek.com/chat/completions"),
         "deepseek-v4-flash",

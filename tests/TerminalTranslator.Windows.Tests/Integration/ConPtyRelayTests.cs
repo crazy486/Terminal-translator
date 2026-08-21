@@ -9,6 +9,26 @@ namespace TerminalTranslator.Windows.Tests.Integration;
 public sealed class ConPtyRelayTests
 {
     [TestMethod]
+    public async Task WindowsPowerShell51_DefaultConPty_RoundTripsUtf8InputAndOutput()
+    {
+        await using ConPtySession session = ConPtySession.StartPowerShell(Environment.CurrentDirectory);
+        await using MemoryStream programOutput = new();
+        Task outputTask = new ConsoleOutputRelay(session.Output, programOutput).CopyAsync(CancellationToken.None);
+
+        const string expected = "Unicode round trip: 你好，世界";
+        await session.Input.WriteAsync(Encoding.UTF8.GetBytes($"Write-Output '{expected}'\r\nexit 0\r\n"));
+        await session.Input.FlushAsync();
+
+        int exitCode = await session.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        await session.CompleteInputAsync();
+        session.ClosePseudoConsole();
+        await outputTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.AreEqual(0, exitCode);
+        StringAssert.Contains(Encoding.UTF8.GetString(programOutput.ToArray()), expected);
+    }
+
+    [TestMethod]
     public async Task PowerShellChild_RelaysStdinStdoutUnicodeAndExitCode()
     {
         await using ConPtySession session = ConPtySession.StartPowerShell(Environment.CurrentDirectory);

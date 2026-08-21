@@ -3,7 +3,8 @@ namespace TerminalTranslator.Windows.ConPty;
 public sealed class PseudoConsoleResizeMonitor(
     ConPtySession session,
     Func<(short Columns, short Rows)>? sizeReader = null,
-    TimeSpan? interval = null)
+    TimeSpan? interval = null,
+    Action<short, short>? resized = null)
 {
     private readonly Func<(short Columns, short Rows)> _sizeReader = sizeReader ?? ReadConsoleSize;
     private readonly TimeSpan _interval = interval ?? TimeSpan.FromMilliseconds(100);
@@ -17,6 +18,7 @@ public sealed class PseudoConsoleResizeMonitor(
             if (current.Columns > 0 && current.Rows > 0 && current != previous)
             {
                 session.Resize(current.Columns, current.Rows);
+                resized?.Invoke(current.Columns, current.Rows);
                 previous = current;
             }
 

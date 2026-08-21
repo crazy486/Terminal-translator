@@ -26,7 +26,7 @@ public sealed partial class EnglishCandidateClassifier
     private static bool IsUsefulEnglish(string text)
     {
         if (text.Length < 4 || PathRegex().IsMatch(text) || VersionRegex().IsMatch(text) ||
-            PowerShellPromptRegex().IsMatch(text))
+            PowerShellPromptRegex().IsMatch(text) || TerminalTranslatorStatusRegex().IsMatch(text))
         {
             return false;
         }
@@ -45,7 +45,8 @@ public sealed partial class EnglishCandidateClassifier
         }
 
         string trimmed = text.TrimStart();
-        if (CodeRegex().IsMatch(trimmed) || CommandRegex().IsMatch(trimmed))
+        if (CodeRegex().IsMatch(trimmed) ||
+            (CommandRegex().IsMatch(trimmed) && !PowerShellErrorRecordRegex().IsMatch(trimmed)))
         {
             return false;
         }
@@ -72,11 +73,17 @@ public sealed partial class EnglishCandidateClassifier
     [GeneratedRegex(@"^(?:const|var|let|public|private|class|if|for|while|return)\b|[{};].*[=();]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CodeRegex();
 
-    [GeneratedRegex(@"^(?:(?:git|npm|npx|dotnet|python|pip|pwsh|powershell|cd|dir|ls)\s+[-\w]|[A-Za-z]+-[A-Za-z]+\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?:>\s*)*(?:(?:git|npm|npx|dotnet|python|pip|pwsh|powershell|tt|cd|dir|ls)\s+[-\w]|[A-Za-z]+-[A-Za-z]+\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CommandRegex();
 
     [GeneratedRegex(@"^PS\s+(?:[A-Za-z]:\\|\\\\|/).*>\s*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PowerShellPromptRegex();
+
+    [GeneratedRegex(@"^Translation\s+(?:enabled|disabled)\.?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex TerminalTranslatorStatusRegex();
+
+    [GeneratedRegex(@"(?:CategoryInfo|FullyQualifiedErrorId)\s*:", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PowerShellErrorRecordRegex();
 
     [GeneratedRegex(@"\b(?:error|failed|failure|unable|denied|warning|continue|confirm|proceed)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex HighPriorityRegex();
