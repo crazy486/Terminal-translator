@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -8,38 +9,104 @@ public enum AnalysisLineDisposition
 {
     ProgramOutput,
     PowerShellArtifact,
+    PowerShellHardBoundary,
     TerminalTranslatorControlOutput,
 }
 
-public sealed partial class SubmittedCommandTracker
+public interface ISubmittedCommandTracker
 {
-    private const int MaximumRecentCommands = 16;
+    void BeginObservationEpoch(long epoch);
+
+    void BeginObservationEpoch(long epoch, bool claimDormantEnableControl);
+
+    bool Observe(long epoch, ReadOnlyMemory<byte> bytes);
+
+    bool ObserveDormantInput(long epoch, ReadOnlyMemory<byte> bytes);
+
+    AnalysisLineDisposition ClassifyAnalysisLine(long epoch, string line);
+}
+
+public sealed partial class SubmittedCommandTracker : ISubmittedCommandTracker
+{
+    private const int MaximumPendingLines = 64;
+    private const int MaximumControlOutputLines = 16;
+    private static readonly TimeSpan MaximumControlOwnershipDuration = TimeSpan.FromMinutes(2);
 
     private readonly object _gate = new();
     private readonly Decoder _decoder = new UTF8Encoding(false, false).GetDecoder();
     private readonly StringBuilder _currentLine = new();
-    private readonly Queue<SubmittedCommand> _recent = new();
-    private InputState _state;
+    private readonly Queue<SubmittedLine> _pending = new();
+    private readonly Queue<SubmittedLine> _recentSubmitted = new();
+    private InputParserState _inputParserState;
     private bool _lastWasCarriageReturn;
-    private bool _controlOutputActive;
-    private bool _controlOutputPending;
-    private string? _hereStringTerminator;
+    private long _nextSubmissionSequence;
+    private long _observationEpoch = -1;
+    private CommandTransaction? _activeTransaction;
+    private string? _dormantEnableControl;
 
     public void Observe(ReadOnlyMemory<byte> bytes)
     {
-        if (bytes.IsEmpty)
-        {
-            return;
-        }
-
         lock (_gate)
         {
-            int charCount = _decoder.GetCharCount(bytes.Span, flush: false);
-            char[] characters = new char[charCount];
-            _decoder.GetChars(bytes.Span, characters, flush: false);
-            foreach (char character in characters)
+            EnsureLegacyEpoch();
+            ObserveCore(bytes, dormant: false);
+        }
+    }
+
+    public bool Observe(long epoch, ReadOnlyMemory<byte> bytes)
+    {
+        lock (_gate)
+        {
+            if (!TryEnterEpoch(epoch))
             {
-                Consume(character);
+                return false;
+            }
+
+            ObserveCore(bytes, dormant: false);
+            return true;
+        }
+    }
+
+    public bool ObserveDormantInput(long epoch, ReadOnlyMemory<byte> bytes)
+    {
+        lock (_gate)
+        {
+            if (!TryEnterEpoch(epoch))
+            {
+                return false;
+            }
+
+            ObserveCore(bytes, dormant: true);
+            return true;
+        }
+    }
+
+    public void BeginObservationEpoch(long epoch)
+    {
+        BeginObservationEpoch(epoch, claimDormantEnableControl: false);
+    }
+
+    public void BeginObservationEpoch(long epoch, bool claimDormantEnableControl)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(epoch);
+        lock (_gate)
+        {
+            string? dormantEnableControl = claimDormantEnableControl
+                ? _dormantEnableControl
+                : null;
+            bool entered = TryEnterEpoch(epoch);
+            if (entered && dormantEnableControl is not null && epoch == _observationEpoch)
+            {
+                SubmittedLine root = new(
+                    _observationEpoch,
+                    ++_nextSubmissionSequence,
+                    dormantEnableControl,
+                    IsTerminalTranslatorControl: true);
+                _activeTransaction = new CommandTransaction(root, allowControlOwnership: true)
+                {
+                    State = TransactionState.AwaitingRootEcho,
+                };
+                _dormantEnableControl = null;
             }
         }
     }
@@ -55,8 +122,14 @@ public sealed partial class SubmittedCommandTracker
 
         lock (_gate)
         {
-            return TryMatchSubmitted(normalized, allowConsumed: false, out _) ||
-                string.Equals(Normalize(_currentLine.ToString()), normalized, StringComparison.Ordinal);
+            PendingMatch pending = FindPending(normalized);
+            if (pending.Kind == PendingMatchKind.Exact)
+            {
+                ConsumeThrough(pending.Index);
+                return true;
+            }
+
+            return pending.Kind == PendingMatchKind.Prefix || MatchesCurrentInput(normalized);
         }
     }
 
@@ -65,119 +138,567 @@ public sealed partial class SubmittedCommandTracker
         ArgumentNullException.ThrowIfNull(line);
         lock (_gate)
         {
-            Match prompt = PowerShellPromptLineRegex().Match(line);
-            if (prompt.Success)
+            EnsureLegacyEpoch();
+            return ClassifyAnalysisLineCore(line);
+        }
+    }
+
+    public AnalysisLineDisposition ClassifyAnalysisLine(long epoch, string line)
+    {
+        ArgumentNullException.ThrowIfNull(line);
+        lock (_gate)
+        {
+            if (!TryEnterEpoch(epoch))
             {
-                _controlOutputActive = false;
-                _controlOutputPending = false;
-                string tail = prompt.Groups["tail"].Value.Trim();
-                if (tail.Length == 0)
-                {
-                    return AnalysisLineDisposition.PowerShellArtifact;
-                }
-
-                if (TryMatchSubmitted(tail, allowConsumed: true, out SubmittedCommand? submitted))
-                {
-                    ActivateControlOwnership(submitted);
-                    return AnalysisLineDisposition.PowerShellArtifact;
-                }
-
                 return AnalysisLineDisposition.ProgramOutput;
             }
 
-            Match continuation = PowerShellContinuationLineRegex().Match(line);
-            if (continuation.Success)
+            return ClassifyAnalysisLineCore(line);
+        }
+    }
+
+    private AnalysisLineDisposition ClassifyAnalysisLineCore(string line)
+    {
+        Match prompt = PowerShellPromptLineRegex().Match(line);
+        if (prompt.Success)
+        {
+            return ClassifyPrimaryPrompt(prompt.Groups["tail"].Value);
+        }
+
+        Match wrappedPrimaryPrompt = PowerShellWrappedPrimaryPromptTailRegex().Match(line);
+        if (wrappedPrimaryPrompt.Success &&
+            TryClassifyWrappedPrimaryPrompt(
+                wrappedPrimaryPrompt.Groups["tail"].Value,
+                out AnalysisLineDisposition wrappedDisposition))
+        {
+            return wrappedDisposition;
+        }
+
+        Match continuation = PowerShellContinuationLineRegex().Match(line);
+        if (continuation.Success)
+        {
+            return ClassifyContinuationPrompt(continuation.Groups["tail"].Value);
+        }
+
+        if (_activeTransaction?.IsTerminalTranslatorControl == true)
+        {
+            if (TryReleaseControlAtLaterSubmissionEcho(line, out AnalysisLineDisposition releaseDisposition))
             {
-                string tail = continuation.Groups["tail"].Value.Trim();
-                if (tail.Length == 0)
-                {
-                    return AnalysisLineDisposition.PowerShellArtifact;
-                }
-
-                if (TryMatchSubmitted(tail, allowConsumed: true, out SubmittedCommand? submitted))
-                {
-                    ActivateControlOwnership(submitted);
-                    return AnalysisLineDisposition.PowerShellArtifact;
-                }
-
-                return IsControlOutputOwned
-                    ? AnalysisLineDisposition.TerminalTranslatorControlOutput
-                    : AnalysisLineDisposition.ProgramOutput;
+                return releaseDisposition;
             }
 
-            if (IsControlOutputOwned)
+            if (_activeTransaction.TryOwnControlOutputLine())
             {
+                ConfirmActiveRootWithoutEcho();
                 return AnalysisLineDisposition.TerminalTranslatorControlOutput;
             }
 
-            string normalized = Normalize(line);
-            return normalized.Length > 0 &&
-                (TryMatchSubmitted(normalized, allowConsumed: false, out _) ||
-                 string.Equals(Normalize(_currentLine.ToString()), normalized, StringComparison.Ordinal))
-                ? AnalysisLineDisposition.PowerShellArtifact
-                : AnalysisLineDisposition.ProgramOutput;
+            CompleteActiveTransaction();
         }
+
+        string normalized = Normalize(line);
+        if (normalized.Length == 0)
+        {
+            return AnalysisLineDisposition.PowerShellArtifact;
+        }
+
+        if (_activeTransaction?.State == TransactionState.CollectingContinuationInput)
+        {
+            PendingMatch continuationInput = FindPending(normalized);
+            if (continuationInput.Kind == PendingMatchKind.Exact)
+            {
+                SubmittedLine submitted = ConsumeThrough(continuationInput.Index);
+                _activeTransaction.Attach(submitted);
+                return AnalysisLineDisposition.PowerShellArtifact;
+            }
+
+            if (continuationInput.Kind == PendingMatchKind.Prefix || MatchesCurrentInput(normalized))
+            {
+                return AnalysisLineDisposition.PowerShellArtifact;
+            }
+
+            _activeTransaction.State = TransactionState.ExecutingOrProducingOutput;
+            return AnalysisLineDisposition.ProgramOutput;
+        }
+
+        PendingMatch root = FindPending(normalized);
+        if (root.Kind == PendingMatchKind.Exact)
+        {
+            StartTransaction(ConsumeThrough(root.Index));
+            return AnalysisLineDisposition.PowerShellHardBoundary;
+        }
+
+        if (root.Kind == PendingMatchKind.Prefix || MatchesCurrentInput(normalized))
+        {
+            return AnalysisLineDisposition.PowerShellArtifact;
+        }
+
+        return AnalysisLineDisposition.ProgramOutput;
     }
 
-    private bool IsControlOutputOwned => _controlOutputActive || _controlOutputPending;
-
-    private void ActivateControlOwnership(SubmittedCommand? submitted)
+    private AnalysisLineDisposition ClassifyPrimaryPrompt(string tailValue)
     {
-        if (submitted?.IsTerminalTranslatorControl == true)
+        string tail = RemoveLeadingContinuationMarker(tailValue.Trim());
+        if (tail.Length > 0 && _activeTransaction?.MatchesAttachedLine(tail) == true)
         {
-            _controlOutputActive = true;
-            _controlOutputPending = false;
+            ConfirmActiveRootEcho();
+            return AnalysisLineDisposition.PowerShellHardBoundary;
         }
+
+        if (tail.Length > 0 &&
+            FindPending(tail, allowPsReadLineRedrawComposite: true).Kind == PendingMatchKind.None &&
+            MatchesRecentSubmission(tail))
+        {
+            return AnalysisLineDisposition.PowerShellHardBoundary;
+        }
+
+        if (tail.Length == 0 &&
+            _activeTransaction?.State == TransactionState.AwaitingRootEcho)
+        {
+            // Input observation intentionally happens before the ConPTY write.
+            // The analysis worker can therefore receive the already-visible
+            // pre-submission prompt after ownership has been established.
+            return AnalysisLineDisposition.PowerShellHardBoundary;
+        }
+
+        CompleteActiveTransaction();
+        if (tail.Length == 0)
+        {
+            return AnalysisLineDisposition.PowerShellHardBoundary;
+        }
+
+        if (TryConsumePendingSequence(tail, out SubmittedLine[] sequence))
+        {
+            StartTransaction(sequence[0]);
+            foreach (SubmittedLine continuation in sequence.Skip(1))
+            {
+                _activeTransaction!.Attach(continuation);
+            }
+
+            return AnalysisLineDisposition.PowerShellHardBoundary;
+        }
+
+        if (TryConsumePendingControlPrefix(tail, out SubmittedLine controlRoot))
+        {
+            StartTransaction(controlRoot);
+            return AnalysisLineDisposition.PowerShellHardBoundary;
+        }
+
+        PendingMatch root = FindPending(tail, allowPsReadLineRedrawComposite: true);
+        if (root.Kind == PendingMatchKind.Exact)
+        {
+            StartTransaction(ConsumeThrough(root.Index));
+            return AnalysisLineDisposition.PowerShellHardBoundary;
+        }
+
+        if (root.Kind == PendingMatchKind.Prefix || MatchesCurrentInput(tail))
+        {
+            return AnalysisLineDisposition.PowerShellHardBoundary;
+        }
+
+        return AnalysisLineDisposition.ProgramOutput;
     }
 
-    private bool TryMatchSubmitted(
-        string candidate,
-        bool allowConsumed,
-        out SubmittedCommand? matched)
+    private bool TryClassifyWrappedPrimaryPrompt(
+        string tailValue,
+        out AnalysisLineDisposition disposition)
     {
-        string normalized = Normalize(candidate);
-        string candidateWithoutPromptTail = RemovePromptTail(normalized);
-        foreach (SubmittedCommand submitted in _recent.Reverse())
+        string tail = Normalize(tailValue);
+        PendingMatch pending = FindPending(tail, allowPsReadLineRedrawComposite: true);
+        if (pending.Kind == PendingMatchKind.Exact)
         {
-            if (submitted.Consumed && !allowConsumed)
+            SubmittedLine matched = _pending.ElementAt(pending.Index);
+            if (matched.IsTerminalTranslatorControl)
+            {
+                // A row shaped as "> <pending command>" is ambiguous: narrow-pane
+                // PSReadLine redraw and ordinary stdout are byte-for-byte identical.
+                // It may release existing suppression, but it must never acquire or
+                // renew control ownership. A later full primary prompt can confirm it.
+                CompleteActiveTransaction();
+                disposition = AnalysisLineDisposition.ProgramOutput;
+                return true;
+            }
+
+            CompleteActiveTransaction();
+            StartTransaction(ConsumeThrough(pending.Index));
+            disposition = AnalysisLineDisposition.PowerShellHardBoundary;
+            return true;
+        }
+
+        if (pending.Kind == PendingMatchKind.Prefix || MatchesCurrentInput(tail))
+        {
+            disposition = AnalysisLineDisposition.PowerShellHardBoundary;
+            return true;
+        }
+
+        disposition = default;
+        return false;
+    }
+
+    private bool TryReleaseControlAtLaterSubmissionEcho(
+        string line,
+        out AnalysisLineDisposition disposition)
+    {
+        disposition = default;
+        if (_activeTransaction?.IsTerminalTranslatorControl != true)
+        {
+            return false;
+        }
+
+        string candidate = Normalize(line);
+        if (candidate.Length == 0)
+        {
+            return false;
+        }
+
+        SubmittedLine[] pending = _pending.ToArray();
+        for (int index = 0; index < pending.Length; index++)
+        {
+            SubmittedLine submitted = pending[index];
+            if (submitted.SubmissionSequence <= _activeTransaction.RootSequence ||
+                !EndsWithSubmittedCommand(candidate, submitted.Text))
             {
                 continue;
             }
 
-            if (string.Equals(submitted.Text, normalized, StringComparison.Ordinal) ||
-                string.Equals(submitted.Text, candidateWithoutPromptTail, StringComparison.Ordinal))
-            {
-                submitted.Consumed = true;
-                matched = submitted;
-                return true;
-            }
-
-            if ((normalized.Length > 0 && submitted.Text.StartsWith(normalized, StringComparison.Ordinal)) ||
-                (candidateWithoutPromptTail.Length > 0 &&
-                 submitted.Text.StartsWith(candidateWithoutPromptTail, StringComparison.Ordinal)))
-            {
-                matched = submitted;
-                return true;
-            }
+            SubmittedLine boundary = ConsumeThrough(index);
+            CompleteActiveTransaction();
+            StartTransaction(boundary, allowControlOwnership: false);
+            disposition = AnalysisLineDisposition.PowerShellHardBoundary;
+            return true;
         }
 
-        matched = null;
         return false;
     }
 
-    private void Consume(char character)
+    private static bool EndsWithSubmittedCommand(string candidate, string submitted) =>
+        string.Equals(candidate, submitted, StringComparison.Ordinal) ||
+        (candidate.Length > submitted.Length &&
+         candidate.EndsWith(submitted, StringComparison.Ordinal) &&
+         char.IsWhiteSpace(candidate[candidate.Length - submitted.Length - 1]));
+
+    private AnalysisLineDisposition ClassifyContinuationPrompt(string tailValue)
     {
-        if (_state == InputState.Escape)
+        string tail = RemoveLeadingContinuationMarker(tailValue.Trim());
+        if (_activeTransaction is null)
         {
-            _state = character == '[' ? InputState.Csi : InputState.Normal;
+            PendingMatch orphanedContinuation = FindPending(tail);
+            if (tail.Length > 0 && orphanedContinuation.Kind == PendingMatchKind.Exact)
+            {
+                SubmittedLine[] submittedLines = ConsumeLinesThrough(orphanedContinuation.Index);
+                StartTransaction(submittedLines[0], collectingContinuation: true);
+                foreach (SubmittedLine continuation in submittedLines.Skip(1))
+                {
+                    _activeTransaction!.Attach(continuation);
+                }
+
+                return AnalysisLineDisposition.PowerShellArtifact;
+            }
+
+            return AnalysisLineDisposition.ProgramOutput;
+        }
+
+        _activeTransaction.State = TransactionState.CollectingContinuationInput;
+        if (tail.Length == 0)
+        {
+            return AnalysisLineDisposition.PowerShellArtifact;
+        }
+
+        PendingMatch pending = FindPending(tail);
+        if (pending.Kind == PendingMatchKind.Exact)
+        {
+            _activeTransaction.Attach(ConsumeThrough(pending.Index));
+            return AnalysisLineDisposition.PowerShellArtifact;
+        }
+
+        if (pending.Kind == PendingMatchKind.Prefix ||
+            _activeTransaction.MatchesAttachedLine(tail) ||
+            MatchesRecentSubmission(tail) ||
+            MatchesCurrentInput(tail))
+        {
+            return AnalysisLineDisposition.PowerShellArtifact;
+        }
+
+        // Repeated redraws are matched above. Once all observed submitted
+        // lines have been consumed, an otherwise unmatched row is the first
+        // program-output candidate for the active transaction.
+        _activeTransaction.State = TransactionState.ExecutingOrProducingOutput;
+        return AnalysisLineDisposition.ProgramOutput;
+    }
+
+    private void StartTransaction(
+        SubmittedLine root,
+        bool collectingContinuation = false,
+        bool allowControlOwnership = true)
+    {
+        if (root.ObservationEpoch != _observationEpoch)
+        {
             return;
         }
 
-        if (_state == InputState.Csi)
+        _activeTransaction = new CommandTransaction(root, allowControlOwnership)
+        {
+            State = collectingContinuation
+                ? TransactionState.CollectingContinuationInput
+                : TransactionState.ExecutingOrProducingOutput,
+        };
+    }
+
+    private void CompleteActiveTransaction() => _activeTransaction = null;
+
+    private void ConfirmActiveRootEcho()
+    {
+        if (_activeTransaction?.State != TransactionState.AwaitingRootEcho)
+        {
+            return;
+        }
+
+        ConsumePendingThroughSequence(_activeTransaction.RootSequence);
+        _activeTransaction.State = TransactionState.ExecutingOrProducingOutput;
+    }
+
+    private void ConfirmActiveRootWithoutEcho()
+    {
+        if (_activeTransaction?.State != TransactionState.AwaitingRootEcho)
+        {
+            return;
+        }
+
+        ConsumePendingThroughSequence(_activeTransaction.RootSequence);
+        _activeTransaction.State = TransactionState.ExecutingOrProducingOutput;
+    }
+
+    private void ConsumePendingThroughSequence(long submissionSequence)
+    {
+        SubmittedLine[] pending = _pending.ToArray();
+        int index = Array.FindIndex(
+            pending,
+            line => line.SubmissionSequence == submissionSequence);
+        if (index >= 0)
+        {
+            ConsumeLinesThrough(index);
+        }
+    }
+
+    private PendingMatch FindPending(
+        string candidate,
+        bool allowPsReadLineRedrawComposite = false)
+    {
+        string[] candidates = CandidateForms(candidate);
+        if (candidates.Length == 0)
+        {
+            return PendingMatch.None;
+        }
+
+        SubmittedLine[] pending = _pending.ToArray();
+        PendingMatch prefix = PendingMatch.None;
+        for (int index = 0; index < pending.Length; index++)
+        {
+            if (candidates.Any(candidateForm =>
+                    string.Equals(pending[index].Text, candidateForm, StringComparison.Ordinal) ||
+                    (allowPsReadLineRedrawComposite &&
+                     IsPsReadLineRedrawComposite(candidateForm, pending[index].Text))))
+            {
+                return new PendingMatch(PendingMatchKind.Exact, index);
+            }
+
+            if (candidates.Any(candidateForm =>
+                    pending[index].Text.StartsWith(candidateForm, StringComparison.Ordinal)) &&
+                prefix.Kind == PendingMatchKind.None)
+            {
+                prefix = new PendingMatch(PendingMatchKind.Prefix, index);
+            }
+        }
+
+        return prefix;
+    }
+
+    private static bool IsPsReadLineRedrawComposite(string candidate, string submitted)
+    {
+        if (candidate.Length <= submitted.Length ||
+            !candidate.EndsWith(submitted, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        int finalSubmissionStart = candidate.Length - submitted.Length;
+        if (finalSubmissionStart == 0 ||
+            !char.IsWhiteSpace(candidate[finalSubmissionStart - 1]))
+        {
+            return false;
+        }
+
+        string stalePrefix = candidate[..finalSubmissionStart].TrimEnd();
+        return stalePrefix.Length > 0 &&
+            stalePrefix.Length < submitted.Length &&
+            submitted.StartsWith(stalePrefix, StringComparison.Ordinal);
+    }
+
+    private bool TryConsumePendingSequence(string candidate, out SubmittedLine[] sequence)
+    {
+        string remaining = Normalize(candidate);
+        SubmittedLine[] pending = _pending.ToArray();
+        List<SubmittedLine> matched = [];
+        for (int index = 0; index < pending.Length; index++)
+        {
+            remaining = RemoveLeadingContinuationMarker(remaining);
+            if (!remaining.StartsWith(pending[index].Text, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            matched.Add(pending[index]);
+            remaining = remaining[pending[index].Text.Length..].TrimStart();
+            if (RemoveLeadingContinuationMarker(remaining).Length == 0)
+            {
+                sequence = ConsumeLinesThrough(index);
+                return true;
+            }
+        }
+
+        sequence = [];
+        return false;
+    }
+
+    private bool TryConsumePendingControlPrefix(
+        string candidate,
+        out SubmittedLine controlRoot)
+    {
+        string normalized = Normalize(candidate);
+        SubmittedLine[] pending = _pending.ToArray();
+        for (int index = 0; index < pending.Length; index++)
+        {
+            if (!pending[index].IsTerminalTranslatorControl ||
+                normalized.Length <= pending[index].Text.Length ||
+                !normalized.StartsWith(pending[index].Text, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            controlRoot = ConsumeThrough(index);
+            return true;
+        }
+
+        controlRoot = null!;
+        return false;
+    }
+
+    private static string[] CandidateForms(string candidate)
+    {
+        string normalized = Normalize(candidate);
+        if (normalized.Length == 0)
+        {
+            return [];
+        }
+
+        int promptEnd = normalized.IndexOf('>');
+        if (promptEnd < 0 || promptEnd == normalized.Length - 1)
+        {
+            return [normalized];
+        }
+
+        string tail = Normalize(normalized[(promptEnd + 1)..]);
+        return tail.Length == 0 || string.Equals(tail, normalized, StringComparison.Ordinal)
+            ? [normalized]
+            : [normalized, tail];
+    }
+
+    private SubmittedLine ConsumeThrough(int index)
+    {
+        SubmittedLine[] lines = ConsumeLinesThrough(index);
+        return lines[^1];
+    }
+
+    private SubmittedLine[] ConsumeLinesThrough(int index)
+    {
+        SubmittedLine[] lines = new SubmittedLine[index + 1];
+        for (int current = 0; current <= index; current++)
+        {
+            lines[current] = _pending.Dequeue();
+        }
+
+        return lines;
+    }
+
+    private bool MatchesCurrentInput(string candidate) =>
+        string.Equals(
+            Normalize(_currentLine.ToString()),
+            Normalize(candidate),
+            StringComparison.Ordinal);
+
+    private bool MatchesRecentSubmission(string candidate)
+    {
+        string normalized = Normalize(candidate);
+        return normalized.Length > 0 && _recentSubmitted.Any(line =>
+            string.Equals(line.Text, normalized, StringComparison.Ordinal));
+    }
+
+    private void EnsureLegacyEpoch()
+    {
+        if (_observationEpoch < 0)
+        {
+            ResetForEpoch(0);
+        }
+    }
+
+    private bool TryEnterEpoch(long epoch)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(epoch);
+        if (epoch < _observationEpoch)
+        {
+            return false;
+        }
+
+        if (epoch > _observationEpoch)
+        {
+            ResetForEpoch(epoch);
+        }
+
+        return true;
+    }
+
+    private void ResetForEpoch(long epoch)
+    {
+        _decoder.Reset();
+        _currentLine.Clear();
+        _pending.Clear();
+        _recentSubmitted.Clear();
+        _inputParserState = InputParserState.Normal;
+        _lastWasCarriageReturn = false;
+        _activeTransaction = null;
+        _dormantEnableControl = null;
+        _observationEpoch = epoch;
+    }
+
+    private void ObserveCore(ReadOnlyMemory<byte> bytes, bool dormant)
+    {
+        if (bytes.IsEmpty)
+        {
+            return;
+        }
+
+        int charCount = _decoder.GetCharCount(bytes.Span, flush: false);
+        char[] characters = new char[charCount];
+        _decoder.GetChars(bytes.Span, characters, flush: false);
+        foreach (char character in characters)
+        {
+            ConsumeInput(character, dormant);
+        }
+    }
+
+    private void ConsumeInput(char character, bool dormant)
+    {
+        if (_inputParserState == InputParserState.Escape)
+        {
+            _inputParserState = character == '[' ? InputParserState.Csi : InputParserState.Normal;
+            return;
+        }
+
+        if (_inputParserState == InputParserState.Csi)
         {
             if (character is >= '@' and <= '~')
             {
-                _state = InputState.Normal;
+                _inputParserState = InputParserState.Normal;
             }
 
             return;
@@ -185,20 +706,20 @@ public sealed partial class SubmittedCommandTracker
 
         if (character == '\u001b')
         {
-            _state = InputState.Escape;
+            _inputParserState = InputParserState.Escape;
             return;
         }
 
         switch (character)
         {
             case '\r':
-                Commit();
+                CommitInputLine(dormant);
                 _lastWasCarriageReturn = true;
                 break;
             case '\n':
                 if (!_lastWasCarriageReturn)
                 {
-                    Commit();
+                    CommitInputLine(dormant);
                 }
 
                 _lastWasCarriageReturn = false;
@@ -223,43 +744,49 @@ public sealed partial class SubmittedCommandTracker
         }
     }
 
-    private void Commit()
+    private void CommitInputLine(bool dormant)
     {
-        string inputLine = _currentLine.ToString();
-        string normalized = Normalize(inputLine);
+        string normalized = Normalize(_currentLine.ToString());
         _currentLine.Clear();
         if (normalized.Length == 0)
         {
             return;
         }
 
-        bool insideHereString = _hereStringTerminator is not null;
-        Match hereStringStart = insideHereString
-            ? Match.Empty
-            : HereStringStartRegex().Match(inputLine.TrimEnd());
-        SubmittedCommand submitted = new(
+        if (dormant)
+        {
+            if (TerminalTranslatorEnableCommandRegex().IsMatch(normalized))
+            {
+                _dormantEnableControl = normalized;
+            }
+
+            return;
+        }
+
+        bool mayStartControlTransaction = _activeTransaction is null && _pending.Count == 0;
+        SubmittedLine submitted = new(
+            _observationEpoch,
+            ++_nextSubmissionSequence,
             normalized,
-            !insideHereString && !hereStringStart.Success &&
             TerminalTranslatorControlCommandRegex().IsMatch(normalized));
-        _recent.Enqueue(submitted);
-        if (submitted.IsTerminalTranslatorControl)
+        _pending.Enqueue(submitted);
+        _recentSubmitted.Enqueue(submitted);
+        if (mayStartControlTransaction && submitted.IsTerminalTranslatorControl)
         {
-            _controlOutputPending = true;
+            _activeTransaction = new CommandTransaction(submitted, allowControlOwnership: true)
+            {
+                State = TransactionState.AwaitingRootEcho,
+            };
         }
 
-        if (insideHereString &&
-            string.Equals(inputLine.Trim(), _hereStringTerminator, StringComparison.Ordinal))
+        while (_pending.Count > MaximumPendingLines)
         {
-            _hereStringTerminator = null;
-        }
-        else if (hereStringStart.Success)
-        {
-            _hereStringTerminator = hereStringStart.Groups["quote"].Value + "@";
+            _pending.Dequeue();
         }
 
-        while (_recent.Count > MaximumRecentCommands)
+        while (_recentSubmitted.Count > MaximumPendingLines)
         {
-            _recent.Dequeue();
+            _recentSubmitted.Dequeue();
         }
     }
 
@@ -287,17 +814,8 @@ public sealed partial class SubmittedCommandTracker
         return WhitespaceRegex().Replace(normalized.Trim(), " ");
     }
 
-    private static string RemovePromptTail(string candidate)
-    {
-        int promptEnd = candidate.IndexOf('>');
-        if (promptEnd < 0 || promptEnd == candidate.Length - 1)
-        {
-            return candidate;
-        }
-
-        string remainder = candidate[(promptEnd + 1)..].TrimStart();
-        return remainder.Length == 0 ? candidate : remainder;
-    }
+    private static string RemoveLeadingContinuationMarker(string value) =>
+        ContinuationPrefixRegex().Replace(value, string.Empty).Trim();
 
     [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant)]
     private static partial Regex WhitespaceRegex();
@@ -313,7 +831,10 @@ public sealed partial class SubmittedCommandTracker
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PowerShellPromptLineRegex();
 
-    [GeneratedRegex(@"^\s*>+\s*(?<tail>.*)$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^\s*>(?!>)\s*(?<tail>.+)$", RegexOptions.CultureInvariant)]
+    private static partial Regex PowerShellWrappedPrimaryPromptTailRegex();
+
+    [GeneratedRegex(@"^\s*>>+\s*(?<tail>.*)$", RegexOptions.CultureInvariant)]
     private static partial Regex PowerShellContinuationLineRegex();
 
     [GeneratedRegex(
@@ -321,17 +842,73 @@ public sealed partial class SubmittedCommandTracker
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TerminalTranslatorControlCommandRegex();
 
-    [GeneratedRegex(@"@(?<quote>[\""'])\s*$", RegexOptions.CultureInvariant)]
-    private static partial Regex HereStringStartRegex();
+    [GeneratedRegex(
+        @"^(?:&\s*)?(?:[\""'][^\""']*tt(?:\.exe)?[\""']|(?:\S*\\)?tt(?:\.exe)?)\s+on\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex TerminalTranslatorEnableCommandRegex();
 
-    private sealed class SubmittedCommand(string text, bool isTerminalTranslatorControl)
+    private sealed record SubmittedLine(
+        long ObservationEpoch,
+        long SubmissionSequence,
+        string Text,
+        bool IsTerminalTranslatorControl);
+
+    private sealed class CommandTransaction(SubmittedLine root, bool allowControlOwnership)
     {
-        public string Text { get; } = text;
+        private readonly List<SubmittedLine> _lines = [root];
+        private readonly long _startedAt = Stopwatch.GetTimestamp();
+        private int _ownedControlOutputLines;
 
-        public bool IsTerminalTranslatorControl { get; } = isTerminalTranslatorControl;
+        public bool IsTerminalTranslatorControl =>
+            allowControlOwnership && root.IsTerminalTranslatorControl;
 
-        public bool Consumed { get; set; }
+        public long ObservationEpoch => root.ObservationEpoch;
+
+        public long RootSequence => root.SubmissionSequence;
+
+        public TransactionState State { get; set; }
+
+        public void Attach(SubmittedLine line)
+        {
+            if (line.ObservationEpoch != root.ObservationEpoch)
+            {
+                throw new InvalidOperationException(
+                    "A command transaction cannot attach input from another observation epoch.");
+            }
+
+            _lines.Add(line);
+        }
+
+        public bool TryOwnControlOutputLine()
+        {
+            if (!IsTerminalTranslatorControl ||
+                _ownedControlOutputLines >= MaximumControlOutputLines ||
+                Stopwatch.GetElapsedTime(_startedAt) > MaximumControlOwnershipDuration)
+            {
+                return false;
+            }
+
+            _ownedControlOutputLines++;
+            return true;
+        }
+
+        public bool MatchesAttachedLine(string candidate) =>
+            _lines.Any(line => string.Equals(line.Text, Normalize(candidate), StringComparison.Ordinal));
     }
 
-    private enum InputState { Normal, Escape, Csi }
+    private readonly record struct PendingMatch(PendingMatchKind Kind, int Index)
+    {
+        public static PendingMatch None => new(PendingMatchKind.None, -1);
+    }
+
+    private enum PendingMatchKind { None, Prefix, Exact }
+
+    private enum TransactionState
+    {
+        AwaitingRootEcho,
+        ExecutingOrProducingOutput,
+        CollectingContinuationInput,
+    }
+
+    private enum InputParserState { Normal, Escape, Csi }
 }

@@ -25,7 +25,10 @@ public sealed class SessionControlHandler(
         bool changed = false;
         if (fingerprintMatches && consent)
         {
-            changed = pipeline.Enable(providerFingerprint, consent: true);
+            changed = pipeline.Enable(
+                providerFingerprint,
+                consent: true,
+                claimDormantEnableControl: true);
         }
 
         bool enabled = fingerprintMatches && consent &&

@@ -4,7 +4,11 @@ public interface INonBlockingAnalysisSink
 {
     bool IsEnabled { get; }
 
+    bool IsObserving => IsEnabled;
+
     bool TryOffer(ReadOnlyMemory<byte> bytes);
+
+    bool TryObserve(ReadOnlyMemory<byte> bytes) => TryOffer(bytes);
 }
 
 public sealed class ConsoleOutputRelay(
@@ -26,13 +30,14 @@ public sealed class ConsoleOutputRelay(
             await programOutput.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
             await programOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
 
-            // The program pane is the primary path. Allocate and offer a side copy only while
-            // translation is enabled, and never wait for the analysis consumer.
-            if (analysisSink?.IsEnabled == true)
+            // The program pane is the primary path. The production sink advertises
+            // IsObserving=false while disabled (FR-010); when enabled, its side copy
+            // remains a non-blocking offer and can never delay this raw-output path.
+            if (analysisSink?.IsObserving == true)
             {
                 try
                 {
-                    _ = analysisSink.TryOffer(buffer.AsMemory(0, count).ToArray());
+                    _ = analysisSink.TryObserve(buffer.AsMemory(0, count).ToArray());
                 }
                 catch
                 {

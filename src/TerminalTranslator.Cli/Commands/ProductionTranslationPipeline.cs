@@ -19,9 +19,11 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
     private readonly TranslationWorker _translationWorker;
     private readonly Func<string, bool>? _commandEchoFilter;
     private readonly Func<string, AnalysisLineDisposition>? _analysisLineFilter;
+    private readonly ISubmittedCommandTracker? _submittedCommandTracker;
     private readonly SecretDetector? _secretDetector;
     private readonly Func<PrivacyDecision, CancellationToken, ValueTask>? _privacyDecisionSink;
     private readonly Func<int, CancellationToken, ValueTask>? _overloadSink;
+    private readonly ITranslationRuntimeObserver? _runtimeObserver;
     private readonly TranslationSession? _session;
     private readonly string? _providerFingerprint;
     private readonly Channel<AnalysisChunk> _analysis;
@@ -30,6 +32,8 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
     private readonly Task _worker;
     private long _sequence;
     private long _processingGeneration = -1;
+    private long _legacyObservationEpoch;
+    private bool _processingTranslationEnabled;
     private int _pendingExtractedBytes;
     private int _enabled;
 
@@ -42,11 +46,13 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
         int analysisCapacity = 64,
         Func<string, bool>? commandEchoFilter = null,
         Func<string, AnalysisLineDisposition>? analysisLineFilter = null,
+        ISubmittedCommandTracker? submittedCommandTracker = null,
         TranslationSession? session = null,
         string? providerFingerprint = null,
         SecretDetector? secretDetector = null,
         Func<PrivacyDecision, CancellationToken, ValueTask>? privacyDecisionSink = null,
-        Func<int, CancellationToken, ValueTask>? overloadSink = null)
+        Func<int, CancellationToken, ValueTask>? overloadSink = null,
+        ITranslationRuntimeObserver? runtimeObserver = null)
     {
         _sessionId = sessionId;
         _extractor = extractor;
@@ -55,11 +61,13 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
         _translationWorker = translationWorker;
         _commandEchoFilter = commandEchoFilter;
         _analysisLineFilter = analysisLineFilter;
+        _submittedCommandTracker = submittedCommandTracker;
         _session = session;
         _providerFingerprint = providerFingerprint;
         _secretDetector = secretDetector;
         _privacyDecisionSink = privacyDecisionSink;
         _overloadSink = overloadSink;
+        _runtimeObserver = runtimeObserver;
         _analysis = Channel.CreateBounded<AnalysisChunk>(new BoundedChannelOptions(analysisCapacity)
         {
             SingleReader = true,
@@ -67,11 +75,14 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             FullMode = BoundedChannelFullMode.DropWrite,
             AllowSynchronousContinuations = false,
         });
+        _submittedCommandTracker?.BeginObservationEpoch(_session?.Generation ?? 0);
         _worker = ProcessAsync(_shutdown.Token);
     }
 
     public bool IsEnabled => _session?.State == SessionState.Enabled ||
         (_session is null && Volatile.Read(ref _enabled) != 0);
+
+    public bool IsObserving => IsEnabled;
 
     internal int HighQueued => _translationWorker.HighQueued;
 
@@ -81,15 +92,36 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
     {
         if (_session is null)
         {
-            Volatile.Write(ref _enabled, 1);
+            if (Interlocked.Exchange(ref _enabled, 1) == 0)
+            {
+                long epoch = Interlocked.Increment(ref _legacyObservationEpoch);
+                _submittedCommandTracker?.BeginObservationEpoch(epoch);
+            }
+
             return;
         }
 
-        _session.Enable(_providerFingerprint ?? "legacy-provider", consent: true);
+        if (_session.Enable(_providerFingerprint ?? "legacy-provider", consent: true))
+        {
+            _submittedCommandTracker?.BeginObservationEpoch(_session.Generation);
+        }
     }
 
-    public bool Enable(string providerFingerprint, bool consent) =>
-        _session?.Enable(providerFingerprint, consent) ?? EnableLegacy(consent);
+    public bool Enable(
+        string providerFingerprint,
+        bool consent,
+        bool claimDormantEnableControl = false)
+    {
+        bool changed = _session?.Enable(providerFingerprint, consent) ?? EnableLegacy(consent);
+        if (changed)
+        {
+            _submittedCommandTracker?.BeginObservationEpoch(
+                _session?.Generation ?? Volatile.Read(ref _legacyObservationEpoch),
+                claimDormantEnableControl);
+        }
+
+        return changed;
+    }
 
     public bool Disable()
     {
@@ -99,6 +131,7 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             if (disabled)
             {
                 _translationWorker.DiscardPending();
+                _submittedCommandTracker?.BeginObservationEpoch(_session.Generation);
             }
 
             return disabled;
@@ -108,22 +141,69 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
         if (legacyDisabled)
         {
             _translationWorker.DiscardPending();
+            long epoch = Interlocked.Increment(ref _legacyObservationEpoch);
+            _submittedCommandTracker?.BeginObservationEpoch(epoch);
         }
 
         return legacyDisabled;
     }
 
-    public void Resize(int viewportColumns) => _extractor.Resize(viewportColumns);
+    public void Resize(int viewportColumns, int? viewportRows = null) =>
+        _extractor.Resize(viewportColumns, viewportRows);
 
     public bool TryOffer(ReadOnlyMemory<byte> bytes)
     {
-        if (!IsEnabled || bytes.IsEmpty)
+        AnalysisCaptureState capture = CaptureState();
+        if (!capture.TranslationEnabled || bytes.IsEmpty)
         {
             return false;
         }
 
-        long generation = _session?.Generation ?? 1;
-        return _analysis.Writer.TryWrite(new AnalysisChunk(generation, bytes.ToArray()));
+        return TryOfferCore(bytes, capture);
+    }
+
+    public bool TryObserve(ReadOnlyMemory<byte> bytes) => TryOffer(bytes);
+
+    public bool TryObserveSubmittedInput(ReadOnlyMemory<byte> bytes)
+    {
+        AnalysisCaptureState capture = CaptureState();
+        if (bytes.IsEmpty || _submittedCommandTracker is null)
+        {
+            return false;
+        }
+
+        if (!capture.TranslationEnabled)
+        {
+            _ = _submittedCommandTracker.ObserveDormantInput(capture.Generation, bytes);
+            return false;
+        }
+
+        return _submittedCommandTracker.Observe(capture.Generation, bytes);
+    }
+
+    private bool TryOfferCore(ReadOnlyMemory<byte> bytes, AnalysisCaptureState capture) =>
+        _analysis.Writer.TryWrite(new AnalysisChunk(
+            capture.Generation,
+            capture.TranslationEnabled,
+            bytes.ToArray()));
+
+    private AnalysisCaptureState CaptureState()
+    {
+        if (_session is null)
+        {
+            return new AnalysisCaptureState(
+                Volatile.Read(ref _legacyObservationEpoch),
+                Volatile.Read(ref _enabled) != 0);
+        }
+
+        long generation = _session.Generation;
+        bool enabled = _session.State == SessionState.Enabled;
+        if (_session.Generation != generation)
+        {
+            enabled = false;
+        }
+
+        return new AnalysisCaptureState(generation, enabled);
     }
 
     private async Task ProcessAsync(CancellationToken cancellationToken)
@@ -155,9 +235,11 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
                         await BufferExtractedAsync(
                             _extractor.FlushIdle(),
                             _processingGeneration,
+                            _processingTranslationEnabled,
                             cancellationToken).ConfigureAwait(false);
                         await FlushBufferedAsync(
                             _processingGeneration,
+                            _processingTranslationEnabled,
                             cancellationToken).ConfigureAwait(false);
                         break;
                     }
@@ -166,9 +248,11 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
                         await BufferExtractedAsync(
                             _extractor.Flush(),
                             _processingGeneration,
+                            _processingTranslationEnabled,
                             cancellationToken).ConfigureAwait(false);
                         await FlushBufferedAsync(
                             _processingGeneration,
+                            _processingTranslationEnabled,
                             cancellationToken).ConfigureAwait(false);
                         return;
                     }
@@ -178,9 +262,11 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             await BufferExtractedAsync(
                 _extractor.Flush(),
                 _processingGeneration,
+                _processingTranslationEnabled,
                 cancellationToken).ConfigureAwait(false);
             await FlushBufferedAsync(
                 _processingGeneration,
+                _processingTranslationEnabled,
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -190,38 +276,54 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
 
     private async Task ProcessBytesAsync(AnalysisChunk chunk, CancellationToken cancellationToken)
     {
-        long currentGeneration = _session?.Generation ?? 1;
-        if (chunk.Generation != currentGeneration || !IsEnabled)
+        if (_processingGeneration >= 0 &&
+            (chunk.Generation != _processingGeneration ||
+             chunk.TranslationEnabled != _processingTranslationEnabled))
         {
-            return;
+            await BufferExtractedAsync(
+                _extractor.Flush(),
+                _processingGeneration,
+                _processingTranslationEnabled,
+                cancellationToken).ConfigureAwait(false);
+            await FlushBufferedAsync(
+                _processingGeneration,
+                _processingTranslationEnabled,
+                cancellationToken).ConfigureAwait(false);
+            // Output produced while disabled never enters this pipeline. A later
+            // enabled chunk therefore begins a new observable terminal epoch;
+            // cursor/redraw state from the prior generation cannot be reused.
+            _extractor.Reset();
         }
 
-        if (_processingGeneration != chunk.Generation)
-        {
-            _extractor.Reset();
-            ClearBuffered();
-            _processingGeneration = chunk.Generation;
-        }
+        _submittedCommandTracker?.BeginObservationEpoch(chunk.Generation);
+        _processingGeneration = chunk.Generation;
+        _processingTranslationEnabled = chunk.TranslationEnabled;
 
         await BufferExtractedAsync(
             _extractor.Feed(chunk.Bytes),
             chunk.Generation,
+            chunk.TranslationEnabled,
             cancellationToken).ConfigureAwait(false);
     }
 
     private async Task BufferExtractedAsync(
         IReadOnlyList<ExtractedText> extractedItems,
         long generation,
+        bool translationEnabled,
         CancellationToken cancellationToken)
     {
         foreach (ExtractedText extracted in extractedItems)
         {
+            Record(TranslationRuntimeStage.VtUnitEmitted, generation);
             int textBytes = Encoding.UTF8.GetByteCount(extracted.Text);
             int separatorBytes = _pendingExtracted.Count == 0 ? 0 : 1;
             if (_pendingExtracted.Count > 0 &&
                 _pendingExtractedBytes + separatorBytes + textBytes > VtTextExtractor.MaximumCandidateBytes)
             {
-                await FlushBufferedAsync(generation, cancellationToken).ConfigureAwait(false);
+                await FlushBufferedAsync(
+                    generation,
+                    translationEnabled,
+                    cancellationToken).ConfigureAwait(false);
                 separatorBytes = 0;
             }
 
@@ -230,7 +332,10 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
         }
     }
 
-    private async Task FlushBufferedAsync(long generation, CancellationToken cancellationToken)
+    private async Task FlushBufferedAsync(
+        long generation,
+        bool translationEnabled,
+        CancellationToken cancellationToken)
     {
         if (_pendingExtracted.Count == 0)
         {
@@ -239,7 +344,11 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
 
         ExtractedText[] extractedItems = _pendingExtracted.ToArray();
         ClearBuffered();
-        await TranslateAsync(extractedItems, generation, cancellationToken).ConfigureAwait(false);
+        await TranslateAsync(
+            extractedItems,
+            generation,
+            translationEnabled,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private void ClearBuffered()
@@ -251,65 +360,103 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
     private async Task TranslateAsync(
         IReadOnlyList<ExtractedText> extractedItems,
         long generation,
+        bool translationEnabled,
         CancellationToken cancellationToken)
     {
+        if (!CanTranslate(generation, translationEnabled))
+        {
+            return;
+        }
+
         List<ExtractedText> eligibleGroup = [];
         int eligibleGroupBytes = 0;
         foreach (ExtractedText extracted in extractedItems)
         {
-            if (generation < 0 ||
-                generation != (_session?.Generation ?? 1) ||
-                !IsEnabled)
+            foreach (AnalysisFragment fragment in SplitAtPowerShellSemanticBoundaries(
+                         extracted,
+                         generation))
             {
-                return;
-            }
+                if (fragment.IsHardBoundary)
+                {
+                    Record(TranslationRuntimeStage.SemanticBoundary, generation);
+                    await FlushEligibleGroupAsync(
+                        eligibleGroup,
+                        generation,
+                        translationEnabled,
+                        cancellationToken).ConfigureAwait(false);
+                    eligibleGroupBytes = 0;
+                    continue;
+                }
 
-            ExtractedText? candidate = RemovePowerShellAnalysisArtifacts(extracted);
-            if (candidate is null)
-            {
-                continue;
-            }
+                ExtractedText? candidate = fragment.Candidate;
+                if (candidate is null)
+                {
+                    continue;
+                }
 
-            CandidateClassification classification = _classifier.Classify(
-                candidate.Text,
-                candidate.Layout,
-                candidate.Boundary);
-            if (!classification.IsEligible)
-            {
-                await FlushEligibleGroupAsync(
-                    eligibleGroup,
-                    generation,
-                    cancellationToken).ConfigureAwait(false);
-                eligibleGroupBytes = 0;
-                continue;
-            }
+                if (!CanTranslate(generation, translationEnabled))
+                {
+                    await FlushEligibleGroupAsync(
+                        eligibleGroup,
+                        generation,
+                        translationEnabled,
+                        cancellationToken).ConfigureAwait(false);
+                    eligibleGroupBytes = 0;
+                    continue;
+                }
 
-            int candidateBytes = Encoding.UTF8.GetByteCount(candidate.Text);
-            int separatorBytes = eligibleGroup.Count == 0 ? 0 : 1;
-            if (eligibleGroup.Count > 0 &&
-                eligibleGroupBytes + separatorBytes + candidateBytes > VtTextExtractor.MaximumCandidateBytes)
-            {
-                await FlushEligibleGroupAsync(
-                    eligibleGroup,
-                    generation,
-                    cancellationToken).ConfigureAwait(false);
-                eligibleGroupBytes = 0;
-                separatorBytes = 0;
-            }
+                CandidateClassification classification = _classifier.Classify(
+                    candidate.Text,
+                    candidate.Layout,
+                    candidate.Boundary);
+                Record(TranslationRuntimeStage.ClassifierInvoked, generation);
+                if (!classification.IsEligible)
+                {
+                    Record(TranslationRuntimeStage.ClassifierRejected, generation);
+                    await FlushEligibleGroupAsync(
+                        eligibleGroup,
+                        generation,
+                        translationEnabled,
+                        cancellationToken).ConfigureAwait(false);
+                    eligibleGroupBytes = 0;
+                    continue;
+                }
 
-            eligibleGroup.Add(candidate);
-            eligibleGroupBytes += separatorBytes + candidateBytes;
+                int candidateBytes = Encoding.UTF8.GetByteCount(candidate.Text);
+                int separatorBytes = eligibleGroup.Count == 0 ? 0 : 1;
+                if (eligibleGroup.Count > 0 &&
+                    eligibleGroupBytes + separatorBytes + candidateBytes > VtTextExtractor.MaximumCandidateBytes)
+                {
+                    await FlushEligibleGroupAsync(
+                        eligibleGroup,
+                        generation,
+                        translationEnabled,
+                        cancellationToken).ConfigureAwait(false);
+                    eligibleGroupBytes = 0;
+                    separatorBytes = 0;
+                }
+
+                eligibleGroup.Add(candidate);
+                Record(
+                    eligibleGroup.Count == 1
+                        ? TranslationRuntimeStage.OutputBlockOpened
+                        : TranslationRuntimeStage.OutputBlockAppended,
+                    generation);
+                eligibleGroupBytes += separatorBytes + candidateBytes;
+            }
         }
 
         await FlushEligibleGroupAsync(
             eligibleGroup,
             generation,
+            translationEnabled,
             cancellationToken).ConfigureAwait(false);
     }
 
     private async Task FlushEligibleGroupAsync(
         List<ExtractedText> eligibleGroup,
         long generation,
+        bool translationEnabled,
         CancellationToken cancellationToken)
     {
         if (eligibleGroup.Count == 0)
@@ -317,9 +464,7 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             return;
         }
 
-        if (generation < 0 ||
-            generation != (_session?.Generation ?? 1) ||
-            !IsEnabled)
+        if (!CanTranslate(generation, translationEnabled))
         {
             eligibleGroup.Clear();
             return;
@@ -327,12 +472,15 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
 
         ExtractedText candidate = Combine(eligibleGroup);
         eligibleGroup.Clear();
+        Record(TranslationRuntimeStage.OutputBlockClosed, generation);
         ulong sequence = unchecked((ulong)Interlocked.Increment(ref _sequence));
         if (_secretDetector is not null)
         {
+            Record(TranslationRuntimeStage.PrivacyInvoked, generation, sequence);
             PrivacyDecision privacy = _secretDetector.Screen(sequence, candidate.Text);
             if (privacy.Outcome == PrivacyOutcome.Skip)
             {
+                Record(TranslationRuntimeStage.PrivacyRejected, generation, sequence);
                 _session?.RecordPrivacySkip();
                 if (_privacyDecisionSink is not null)
                 {
@@ -347,6 +495,8 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             candidate.Text,
             candidate.Layout,
             candidate.Boundary);
+        Record(TranslationRuntimeStage.ClassifierInvoked, generation, sequence);
+        TimeSpan createdAt = _clock.MonotonicNow;
         OutputSegment segment = new(
             _sessionId,
             generation,
@@ -356,7 +506,13 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             candidate.Boundary,
             classification.Priority,
             classification.DeduplicationKey,
-            _clock.MonotonicNow);
+            createdAt);
+        Record(new TranslationRuntimeEvent(
+            TranslationRuntimeStage.SegmentCreated,
+            createdAt,
+            sequence,
+            generation,
+            CreatedAt: createdAt));
         TranslationWorkOfferResult offer = _translationWorker.Offer(segment);
         if (offer is TranslationWorkOfferResult.DroppedCapacity or
             TranslationWorkOfferResult.DroppedTextBudget)
@@ -368,6 +524,12 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             }
         }
     }
+
+    private bool CanTranslate(long generation, bool translationEnabled) =>
+        translationEnabled &&
+        generation >= 0 &&
+        (_session is null || generation == _session.Generation) &&
+        IsEnabled;
 
     private static ExtractedText Combine(IReadOnlyList<ExtractedText> items)
     {
@@ -384,66 +546,123 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             SourceBoundary.Block);
     }
 
-    private ExtractedText? RemovePowerShellAnalysisArtifacts(ExtractedText extracted)
+    private IReadOnlyList<AnalysisFragment> SplitAtPowerShellSemanticBoundaries(
+        ExtractedText extracted,
+        long generation)
     {
         string[] lines = extracted.Text.ReplaceLineEndings("\n").Split('\n');
+        List<AnalysisFragment> fragments = [];
         List<string> retainedLines = new(lines.Length);
         List<int> retainedIndent = new(lines.Length);
 
         for (int index = 0; index < lines.Length; index++)
         {
             string line = lines[index];
-            if (_analysisLineFilter is not null)
+            AnalysisLineDisposition disposition = ClassifyAnalysisLine(line, generation);
+            if (disposition == AnalysisLineDisposition.PowerShellHardBoundary)
             {
-                if (_analysisLineFilter(line) != AnalysisLineDisposition.ProgramOutput)
-                {
-                    continue;
-                }
-
-                retainedLines.Add(line);
-                retainedIndent.Add(index < extracted.Layout.Indent.Count
-                    ? extracted.Layout.Indent[index]
-                    : CountIndent(line));
+                Record(TranslationRuntimeStage.SemanticBoundary, generation);
+                AddRetainedFragment();
+                fragments.Add(new AnalysisFragment(null, IsHardBoundary: true));
                 continue;
             }
 
-            if (PowerShellPromptRegex().IsMatch(line) || ContinuationPromptRegex().IsMatch(line))
+            if (disposition != AnalysisLineDisposition.ProgramOutput)
             {
+                Record(TranslationRuntimeStage.OwnershipRejectedArtifact, generation);
                 continue;
             }
 
-            if (LooksLikePowerShellEcho(line) && _commandEchoFilter?.Invoke(line) is true)
-            {
-                continue;
-            }
-
+            Record(TranslationRuntimeStage.OwnershipAcceptedProgramOutput, generation);
             retainedLines.Add(line);
             retainedIndent.Add(index < extracted.Layout.Indent.Count
                 ? extracted.Layout.Indent[index]
                 : CountIndent(line));
         }
 
-        if (retainedLines.Count == 0)
+        AddRetainedFragment();
+        return fragments;
+
+        void AddRetainedFragment()
         {
-            return null;
+            if (retainedLines.Count == 0)
+            {
+                return;
+            }
+
+            string text = string.Join('\n', retainedLines);
+            SourceBoundary boundary = retainedLines.Count > 1
+                ? SourceBoundary.Block
+                : extracted.Boundary == SourceBoundary.IdlePrompt && lines.Length == 1
+                    ? SourceBoundary.IdlePrompt
+                    : SourceBoundary.Line;
+            fragments.Add(new AnalysisFragment(
+                new ExtractedText(
+                    text,
+                    new LayoutHints(retainedLines.Count, retainedIndent.ToArray()),
+                    boundary),
+                IsHardBoundary: false));
+            retainedLines.Clear();
+            retainedIndent.Clear();
+        }
+    }
+
+    private AnalysisLineDisposition ClassifyAnalysisLine(string line, long generation)
+    {
+        if (_submittedCommandTracker is not null)
+        {
+            return _submittedCommandTracker.ClassifyAnalysisLine(generation, line);
         }
 
-        string text = string.Join('\n', retainedLines);
-        if (_analysisLineFilter is null && _commandEchoFilter?.Invoke(text) is true)
+        if (_analysisLineFilter is not null)
         {
-            return null;
+            return _analysisLineFilter(line);
         }
 
-        SourceBoundary boundary = retainedLines.Count > 1
-            ? SourceBoundary.Block
-            : extracted.Boundary == SourceBoundary.IdlePrompt && lines.Length == 1
-                ? SourceBoundary.IdlePrompt
-                : SourceBoundary.Line;
-        return new ExtractedText(text, new LayoutHints(retainedLines.Count, retainedIndent), boundary);
+        if (PowerShellPromptRegex().IsMatch(line))
+        {
+            return AnalysisLineDisposition.PowerShellHardBoundary;
+        }
+
+        if (ContinuationPromptRegex().IsMatch(line))
+        {
+            return AnalysisLineDisposition.PowerShellArtifact;
+        }
+
+        if (LooksLikePowerShellEcho(line) && _commandEchoFilter?.Invoke(line) is true)
+        {
+            return PowerShellPromptWithTailRegex().IsMatch(line)
+                ? AnalysisLineDisposition.PowerShellHardBoundary
+                : AnalysisLineDisposition.PowerShellArtifact;
+        }
+
+        return AnalysisLineDisposition.ProgramOutput;
     }
 
     private static bool LooksLikePowerShellEcho(string line) =>
         PowerShellPromptWithTailRegex().IsMatch(line) || ContinuationEchoPrefixRegex().IsMatch(line);
+
+    private void Record(
+        TranslationRuntimeStage stage,
+        long generation,
+        ulong sequence = 0) =>
+        Record(new TranslationRuntimeEvent(
+            stage,
+            _clock.MonotonicNow,
+            sequence,
+            generation));
+
+    private void Record(TranslationRuntimeEvent runtimeEvent)
+    {
+        try
+        {
+            _runtimeObserver?.Record(runtimeEvent);
+        }
+        catch
+        {
+            // Diagnostics are an optional, content-free side path.
+        }
+    }
 
     private static int CountIndent(string line)
     {
@@ -500,8 +719,23 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             return false;
         }
 
-        return Interlocked.Exchange(ref _enabled, 1) == 0;
+        bool changed = Interlocked.Exchange(ref _enabled, 1) == 0;
+        if (changed)
+        {
+            _ = Interlocked.Increment(ref _legacyObservationEpoch);
+        }
+
+        return changed;
     }
 
-    private readonly record struct AnalysisChunk(long Generation, byte[] Bytes);
+    private readonly record struct AnalysisChunk(
+        long Generation,
+        bool TranslationEnabled,
+        byte[] Bytes);
+
+    private readonly record struct AnalysisCaptureState(
+        long Generation,
+        bool TranslationEnabled);
+
+    private readonly record struct AnalysisFragment(ExtractedText? Candidate, bool IsHardBoundary);
 }

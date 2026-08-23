@@ -15,7 +15,12 @@ public sealed class CompanionRendererContractTests
         renderer.Render(new TranslationEventMessage(
             "translation", 1, "session", 1, 7, "Failure:\n  reason", "\u5931\u8d25\uff1a\n  \u539f\u56e0", new LayoutHints(2, [0, 2])));
 
-        Assert.AreEqual("[7] Failure:\n    \u5931\u8d25\uff1a\n      \u539f\u56e0\n\n", output.ToString().ReplaceLineEndings("\n"));
+        Assert.AreEqual(
+            "[7] Failure:\n" +
+            "      reason\n" +
+            "    \u5931\u8d25\uff1a\n" +
+            "      \u539f\u56e0\n\n",
+            output.ToString().ReplaceLineEndings("\n"));
     }
 
     [TestMethod]
@@ -55,4 +60,5 @@ public sealed class CompanionRendererContractTests
             Directory.Delete(directory, recursive: true);
         }
     }
+
 }

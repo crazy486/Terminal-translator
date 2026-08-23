@@ -73,6 +73,35 @@ public sealed class VtTextExtractorInteractiveTests
     }
 
     [TestMethod]
+    public void Feed_PsReadLineRightMarginRedrawDoesNotDuplicateSubmittedCommand()
+    {
+        VtTextExtractor extractor = new(viewportColumns: 60, viewportRows: 20);
+
+        Assert.AreEqual(0, extractor.Feed(Encoding.UTF8.GetBytes(
+            "\u001b[18;56H\u001b[92mexit ")).Count);
+        IReadOnlyList<ExtractedText> result = extractor.Feed(Encoding.UTF8.GetBytes(
+            "\u001b[m\r\n\u001b[92m\u001b[19;56Hexit \u001b[97m0\u001b[?25h\u001b[m\r\n"));
+
+        CollectionAssert.AreEqual(
+            new[] { "exit 0" },
+            result.Select(item => item.Text).ToArray());
+    }
+
+    [TestMethod]
+    public void Feed_PsReadLineRightMarginRedrawRejoinsLeadingSpaceTail()
+    {
+        VtTextExtractor extractor = new(viewportColumns: 60, viewportRows: 20);
+
+        IReadOnlyList<ExtractedText> result = extractor.Feed(Encoding.UTF8.GetBytes(
+            "\u001b[18;57H\u001b[92mexit\u001b[m\r\n" +
+            "\u001b[92m\u001b[19;57Hexit\u001b[m\r\n \u001b[97m0\u001b[K\u001b[?25h\u001b[m\r\n"));
+
+        CollectionAssert.AreEqual(
+            new[] { "exit 0" },
+            result.Select(item => item.Text).ToArray());
+    }
+
+    [TestMethod]
     public void Feed_TreatsSgrBetweenCarriageReturnAndLineFeedAsCrlf()
     {
         VtTextExtractor extractor = new(viewportColumns: 20);
@@ -82,5 +111,52 @@ public sealed class VtTextExtractorInteractiveTests
 
         Assert.AreEqual(1, result.Count);
         Assert.AreEqual("Warning text continues here", result[0].Text);
+    }
+
+    [TestMethod]
+    public void Feed_RejoinsCrLfAtRightMarginButDoesNotJoinNextPrimaryPrompt()
+    {
+        VtTextExtractor extractor = new(viewportColumns: 20);
+
+        IReadOnlyList<ExtractedText> result = extractor.Feed(Encoding.UTF8.GetBytes(
+            "The operation faile\r\nd because input was invalid.\r\n" +
+            "PS C:\\work>\r\n"));
+
+        CollectionAssert.AreEqual(
+            new[] { "The operation failed because input was invalid.", "PS C:\\work>" },
+            result.Select(item => item.Text).ToArray());
+    }
+
+    [TestMethod]
+    public void Feed_RejoinsRightMarginPromptAfterViewportScrollCursorPositioning()
+    {
+        VtTextExtractor extractor = new(viewportColumns: 60);
+        _ = extractor.Feed(Encoding.UTF8.GetBytes(string.Concat(
+            Enumerable.Repeat("completed output\r\n", 25))));
+        string firstPromptPart = "PS D:\\" + new string('p', 53) + ".";
+
+        IReadOnlyList<ExtractedText> result = extractor.Feed(Encoding.UTF8.GetBytes(
+            firstPromptPart + "\r\n\u001b[19;60H.tail>\r\n"));
+
+        Assert.AreEqual(1, result.Count);
+        Assert.AreEqual(firstPromptPart + "tail>", result[0].Text);
+    }
+
+    [TestMethod]
+    public void FlushIdle_RejoinsRightMarginPromptTailWithoutTrailingNewline()
+    {
+        VtTextExtractor extractor = new(viewportColumns: 60);
+        string firstPromptPart = "PS D:\\Projects\\Terminal Translator\\tests\\TerminalTranslator.";
+
+        IReadOnlyList<ExtractedText> immediate = extractor.Feed(Encoding.UTF8.GetBytes(
+            firstPromptPart + "\r\n\u001b[19;60H.Cli.Tests\\bin\\Debug\\net10.0>\u001b[1C"));
+        IReadOnlyList<ExtractedText> idle = extractor.FlushIdle();
+
+        Assert.AreEqual(0, immediate.Count);
+        Assert.AreEqual(1, idle.Count);
+        Assert.AreEqual(
+            "PS D:\\Projects\\Terminal Translator\\tests\\TerminalTranslator.Cli.Tests\\bin\\Debug\\net10.0>",
+            idle[0].Text);
+        Assert.AreEqual(SourceBoundary.IdlePrompt, idle[0].Boundary);
     }
 }

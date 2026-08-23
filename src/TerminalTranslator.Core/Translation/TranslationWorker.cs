@@ -9,6 +9,8 @@ public sealed class TranslationWorker : IAsyncDisposable
     private readonly TranslationCoordinator _coordinator;
     private readonly TranslationSession? _session;
     private readonly Func<TranslationErrorCode, CancellationToken, ValueTask>? _providerErrorSink;
+    private readonly ITranslationRuntimeObserver? _runtimeObserver;
+    private readonly IClock? _runtimeClock;
     private readonly object _generationGate = new();
     private readonly CancellationTokenSource _shutdown = new();
     private CancellationTokenSource _generationCancellation = new();
@@ -16,17 +18,22 @@ public sealed class TranslationWorker : IAsyncDisposable
     private readonly Task _runTask;
     private int _wakePending;
     private int _stopping;
+    private OutputSegment? _activeSegment;
 
     public TranslationWorker(
         TranslationWorkQueue queue,
         TranslationCoordinator coordinator,
         TranslationSession? session = null,
-        Func<TranslationErrorCode, CancellationToken, ValueTask>? providerErrorSink = null)
+        Func<TranslationErrorCode, CancellationToken, ValueTask>? providerErrorSink = null,
+        ITranslationRuntimeObserver? runtimeObserver = null,
+        IClock? runtimeClock = null)
     {
         _queue = queue ?? throw new ArgumentNullException(nameof(queue));
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
         _session = session;
         _providerErrorSink = providerErrorSink;
+        _runtimeObserver = runtimeObserver;
+        _runtimeClock = runtimeClock;
         _runTask = RunAsync(_shutdown.Token);
     }
 
@@ -57,6 +64,7 @@ public sealed class TranslationWorker : IAsyncDisposable
         _queue.Clear();
         lock (_generationGate)
         {
+            RecordCancellationRequested(TranslationCancellationReason.TranslationDisabled);
             _generationCancellation.Cancel();
             _generationCancellation.Dispose();
             _generationCancellation = new CancellationTokenSource();
@@ -70,6 +78,7 @@ public sealed class TranslationWorker : IAsyncDisposable
         if (Interlocked.Exchange(ref _stopping, 1) == 0)
         {
             _queue.Clear();
+            RecordCancellationRequested(TranslationCancellationReason.Shutdown);
             _shutdown.Cancel();
             lock (_generationGate)
             {
@@ -97,13 +106,24 @@ public sealed class TranslationWorker : IAsyncDisposable
                         continue;
                     }
 
+                    CancellationToken workGenerationToken = _session is null
+                        ? GetGenerationToken()
+                        : CancellationToken.None;
+                    using CancellationTokenSource workCancellation =
+                        CancellationTokenSource.CreateLinkedTokenSource(
+                            cancellationToken,
+                            workGenerationToken);
                     try
                     {
-                        using CancellationTokenSource workCancellation =
-                            CancellationTokenSource.CreateLinkedTokenSource(
-                                cancellationToken,
-                                GetGenerationToken());
-                        await _coordinator.TranslateAsync(segment, workCancellation.Token).ConfigureAwait(false);
+                        Volatile.Write(ref _activeSegment, segment);
+                        await _coordinator.TranslateAsync(
+                            segment,
+                            workCancellation.Token,
+                            () => cancellationToken.IsCancellationRequested
+                                ? TranslationCancellationReason.Shutdown
+                                : workGenerationToken.IsCancellationRequested
+                                    ? TranslationCancellationReason.TranslationDisabled
+                                    : TranslationCancellationReason.Caller).ConfigureAwait(false);
                     }
                     catch (TranslationProviderException exception)
                     {
@@ -113,11 +133,20 @@ public sealed class TranslationWorker : IAsyncDisposable
                     {
                         return;
                     }
+                    catch (OperationCanceledException) when (workGenerationToken.IsCancellationRequested)
+                    {
+                        // A disable invalidates only this generation. The worker remains
+                        // available for a later enable and subsequent output.
+                    }
                     catch (Exception exception) when (exception is IOException or ObjectDisposedException)
                     {
                         await PublishProviderFailureAsync(
                             TranslationErrorCode.Unavailable,
                             cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        Volatile.Write(ref _activeSegment, null);
                     }
                 }
             }
@@ -168,6 +197,33 @@ public sealed class TranslationWorker : IAsyncDisposable
             catch (SemaphoreFullException)
             {
             }
+        }
+    }
+
+    private void RecordCancellationRequested(TranslationCancellationReason reason)
+    {
+        OutputSegment? active = Volatile.Read(ref _activeSegment);
+        if (active is null)
+        {
+            return;
+        }
+
+        try
+        {
+            TimeSpan requestedAt = _runtimeClock?.MonotonicNow ?? active.CapturedAt;
+            _runtimeObserver?.Record(new TranslationRuntimeEvent(
+                TranslationRuntimeStage.CancelRequested,
+                requestedAt,
+                active.Sequence,
+                active.Generation,
+                CreatedAt: active.CapturedAt,
+                CancelRequestedAt: requestedAt,
+                TotalAge: requestedAt - active.CapturedAt,
+                CancelReason: reason));
+        }
+        catch
+        {
+            // Diagnostics are an optional, content-free side path.
         }
     }
 

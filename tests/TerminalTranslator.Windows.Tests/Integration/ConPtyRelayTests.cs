@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using TerminalTranslator.Windows.ConPty;
 using TerminalTranslator.Windows.Console;
@@ -176,15 +177,34 @@ public sealed class ConPtyRelayTests
         return count;
     }
 
-    private static string FindRepositoryRoot()
+    private static string FindRepositoryRoot([CallerFilePath] string sourceFile = "")
     {
-        DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "TerminalTranslator.sln")))
+        foreach (string seed in new[]
+                 {
+                     Environment.CurrentDirectory,
+                     AppContext.BaseDirectory,
+                     Path.GetDirectoryName(sourceFile) ?? string.Empty,
+                 })
         {
-            directory = directory.Parent;
+            if (string.IsNullOrWhiteSpace(seed))
+            {
+                continue;
+            }
+
+            DirectoryInfo? directory = new(seed);
+            while (directory is not null &&
+                   !File.Exists(Path.Combine(directory.FullName, "TerminalTranslator.sln")))
+            {
+                directory = directory.Parent;
+            }
+
+            if (directory is not null)
+            {
+                return directory.FullName;
+            }
         }
 
-        return directory?.FullName ?? throw new AssertFailedException("Repository root was not found.");
+        throw new AssertFailedException("Repository root was not found.");
     }
 
     private sealed class RecordingSink : INonBlockingAnalysisSink

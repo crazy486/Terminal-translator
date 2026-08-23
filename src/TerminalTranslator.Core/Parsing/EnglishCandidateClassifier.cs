@@ -25,8 +25,7 @@ public sealed partial class EnglishCandidateClassifier
 
     private static bool IsUsefulEnglish(string text)
     {
-        if (text.Length < 4 || PathRegex().IsMatch(text) || VersionRegex().IsMatch(text) ||
-            PowerShellPromptRegex().IsMatch(text) || TerminalTranslatorStatusRegex().IsMatch(text))
+        if (text.Length < 4 || PathRegex().IsMatch(text) || VersionRegex().IsMatch(text))
         {
             return false;
         }
@@ -75,12 +74,6 @@ public sealed partial class EnglishCandidateClassifier
 
     [GeneratedRegex(@"^(?:>\s*)*(?:(?:git|npm|npx|dotnet|python|pip|pwsh|powershell|tt|cd|dir|ls)\s+[-\w]|[A-Za-z]+-[A-Za-z]+\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CommandRegex();
-
-    [GeneratedRegex(@"^(?:PS\s+)?(?:[A-Za-z]:\\|\\\\|/)[^\r\n>]*>(?:\s*>)*\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex PowerShellPromptRegex();
-
-    [GeneratedRegex(@"^Translation\s+(?:enabled|disabled)\.?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex TerminalTranslatorStatusRegex();
 
     [GeneratedRegex(@"(?:CategoryInfo|FullyQualifiedErrorId)\s*:", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PowerShellErrorRecordRegex();

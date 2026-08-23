@@ -13,7 +13,7 @@ public enum TranslationWorkOfferResult
     DroppedTextBudget,
 }
 
-public sealed class TranslationWorkQueue(IClock clock)
+public sealed class TranslationWorkQueue
 {
     private const int HighCapacity = 16;
     private const int NormalCapacity = 48;
@@ -23,8 +23,22 @@ public sealed class TranslationWorkQueue(IClock clock)
     private readonly object _gate = new();
     private readonly LinkedList<Entry> _high = [];
     private readonly LinkedList<Entry> _normal = [];
-    private readonly IClock _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+    private readonly IClock _clock;
+    private readonly ITranslationRuntimeObserver? _runtimeObserver;
     private int _retainedTextBytes;
+
+    public TranslationWorkQueue(IClock clock)
+        : this(clock, runtimeObserver: null)
+    {
+    }
+
+    public TranslationWorkQueue(
+        IClock clock,
+        ITranslationRuntimeObserver? runtimeObserver)
+    {
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _runtimeObserver = runtimeObserver;
+    }
 
     public int HighCount
     {
@@ -70,6 +84,16 @@ public sealed class TranslationWorkQueue(IClock clock)
         lock (_gate)
         {
             PurgeExpired();
+            TimeSpan enqueuedAt = _clock.MonotonicNow;
+            Record(new TranslationRuntimeEvent(
+                TranslationRuntimeStage.QueueOffer,
+                enqueuedAt,
+                segment.Sequence,
+                segment.Generation,
+                CreatedAt: segment.CapturedAt,
+                EnqueuedAt: enqueuedAt,
+                QueueAge: enqueuedAt - segment.CapturedAt,
+                TotalAge: enqueuedAt - segment.CapturedAt));
 
             LinkedListNode<Entry>? replaced = FindRedraw(segment.RedrawKey);
             LinkedList<Entry>? replacedLane = replaced?.List;
@@ -78,13 +102,32 @@ public sealed class TranslationWorkQueue(IClock clock)
                 Remove(replaced);
             }
 
-            TranslationWorkOfferResult result = TryAdd(segment, textBytes, replaced is not null);
+            TranslationWorkOfferResult result = TryAdd(
+                segment,
+                textBytes,
+                replaced is not null,
+                enqueuedAt);
             if (result is TranslationWorkOfferResult.DroppedCapacity or TranslationWorkOfferResult.DroppedTextBudget &&
                 replaced is not null)
             {
                 Restore(replacedLane!, replaced.Value);
             }
 
+            TranslationRuntimeStage stage = result is
+                TranslationWorkOfferResult.Accepted or
+                TranslationWorkOfferResult.Replaced or
+                TranslationWorkOfferResult.AcceptedWithEviction
+                ? TranslationRuntimeStage.QueueEnqueued
+                : TranslationRuntimeStage.QueueRejected;
+            Record(new TranslationRuntimeEvent(
+                stage,
+                enqueuedAt,
+                segment.Sequence,
+                segment.Generation,
+                CreatedAt: segment.CapturedAt,
+                EnqueuedAt: enqueuedAt,
+                QueueAge: enqueuedAt - segment.CapturedAt,
+                TotalAge: enqueuedAt - segment.CapturedAt));
             return result;
         }
     }
@@ -102,6 +145,17 @@ public sealed class TranslationWorkQueue(IClock clock)
             }
 
             segment = node.Value.Segment;
+            TimeSpan dequeuedAt = _clock.MonotonicNow;
+            Record(new TranslationRuntimeEvent(
+                TranslationRuntimeStage.QueueDequeued,
+                dequeuedAt,
+                segment.Sequence,
+                segment.Generation,
+                CreatedAt: segment.CapturedAt,
+                EnqueuedAt: node.Value.EnqueuedAt,
+                DequeuedAt: dequeuedAt,
+                QueueAge: dequeuedAt - node.Value.EnqueuedAt,
+                TotalAge: dequeuedAt - segment.CapturedAt));
             Remove(node);
             return true;
         }
@@ -117,7 +171,11 @@ public sealed class TranslationWorkQueue(IClock clock)
         }
     }
 
-    private TranslationWorkOfferResult TryAdd(OutputSegment segment, int textBytes, bool isReplacement)
+    private TranslationWorkOfferResult TryAdd(
+        OutputSegment segment,
+        int textBytes,
+        bool isReplacement,
+        TimeSpan enqueuedAt)
     {
         LinkedList<Entry> lane = segment.Priority == TranslationPriority.High ? _high : _normal;
         int capacity = segment.Priority == TranslationPriority.High ? HighCapacity : NormalCapacity;
@@ -147,7 +205,7 @@ public sealed class TranslationWorkQueue(IClock clock)
             }
         }
 
-        lane.AddLast(new Entry(segment, textBytes));
+        lane.AddLast(new Entry(segment, textBytes, enqueuedAt));
         _retainedTextBytes += textBytes;
         if (isReplacement)
         {
@@ -197,6 +255,16 @@ public sealed class TranslationWorkQueue(IClock clock)
             LinkedListNode<Entry>? next = node.Next;
             if (now - node.Value.Segment.CapturedAt > MaximumQueueAge)
             {
+                Record(new TranslationRuntimeEvent(
+                    TranslationRuntimeStage.QueueExpired,
+                    now,
+                    node.Value.Segment.Sequence,
+                    node.Value.Segment.Generation,
+                    CreatedAt: node.Value.Segment.CapturedAt,
+                    EnqueuedAt: node.Value.EnqueuedAt,
+                    QueueAge: now - node.Value.EnqueuedAt,
+                    TotalAge: now - node.Value.Segment.CapturedAt,
+                    CancelReason: TranslationCancellationReason.QueueExpired));
                 Remove(node);
             }
 
@@ -227,5 +295,17 @@ public sealed class TranslationWorkQueue(IClock clock)
         _retainedTextBytes += entry.TextBytes;
     }
 
-    private sealed record Entry(OutputSegment Segment, int TextBytes);
+    private void Record(TranslationRuntimeEvent runtimeEvent)
+    {
+        try
+        {
+            _runtimeObserver?.Record(runtimeEvent);
+        }
+        catch
+        {
+            // Diagnostics are an optional, content-free side path.
+        }
+    }
+
+    private sealed record Entry(OutputSegment Segment, int TextBytes, TimeSpan EnqueuedAt);
 }

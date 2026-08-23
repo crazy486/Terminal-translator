@@ -62,7 +62,7 @@ public sealed class RunnableUserStory1AcceptanceTests
             provider,
             eventServer,
             settings.RequestTimeout,
-            analysisLineFilter: submittedCommands.ClassifyAnalysisLine);
+            submittedCommandTracker: submittedCommands);
         await using MinimalControlPipeServer controlServer = new(
             controlPipeName,
             sessionId,
@@ -75,7 +75,10 @@ public sealed class RunnableUserStory1AcceptanceTests
                     token);
             });
         Task controlTask = controlServer.RunAsync(cancellation.Token);
-        await using ConPtySession conPty = ConPtySession.StartPowerShell(Environment.CurrentDirectory);
+        await using ConPtySession conPty = ConPtySession.Start(
+            "powershell.exe",
+            "-NoLogo -NoExit -Command \"Set-PSReadLineOption -HistorySaveStyle SaveNothing\"",
+            Environment.CurrentDirectory);
         await using MemoryStream programPane = new();
         Task outputTask = new ConsoleOutputRelay(conPty.Output, programPane, pipeline)
             .CopyAsync(cancellation.Token);
@@ -99,7 +102,7 @@ public sealed class RunnableUserStory1AcceptanceTests
 
             await RelayInputAsync(
                 conPty.Input,
-                submittedCommands,
+                pipeline,
                 $"Write-Output '{sourceText}'\r\n",
                 cancellation.Token);
             translation = await ReadTranslationForSourceAsync(
@@ -110,7 +113,7 @@ public sealed class RunnableUserStory1AcceptanceTests
             using CancellationTokenSource cleanup = new(TimeSpan.FromSeconds(5));
             try
             {
-                await RelayInputAsync(conPty.Input, submittedCommands, "exit 0\r\n", cleanup.Token);
+                await RelayInputAsync(conPty.Input, pipeline, "exit 0\r\n", cleanup.Token);
                 childExitCode = await conPty.WaitForExitAsync(cleanup.Token);
                 await conPty.CompleteInputAsync();
                 conPty.ClosePseudoConsole();
@@ -191,14 +194,14 @@ public sealed class RunnableUserStory1AcceptanceTests
 
     private static async Task RelayInputAsync(
         Stream pseudoConsoleInput,
-        SubmittedCommandTracker submittedCommands,
+        ProductionTranslationPipeline pipeline,
         string text,
         CancellationToken cancellationToken)
     {
         await new ConsoleInputRelay(
             new MemoryStream(Encoding.UTF8.GetBytes(text)),
             pseudoConsoleInput,
-            submittedCommands.Observe).CopyAsync(cancellationToken);
+            bytes => _ = pipeline.TryObserveSubmittedInput(bytes)).CopyAsync(cancellationToken);
     }
 
     private static string Escape(byte[] bytes) => Encoding.UTF8.GetString(bytes)

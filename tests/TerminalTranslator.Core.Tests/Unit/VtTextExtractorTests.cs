@@ -40,6 +40,33 @@ public sealed class VtTextExtractorTests
     }
 
     [TestMethod]
+    public void Feed_RepeatedCarriageReturnBeforeLineFeedPreservesCompletedText()
+    {
+        VtTextExtractor extractor = new();
+
+        IReadOnlyList<ExtractedText> result = extractor.Feed(
+            Encoding.UTF8.GetBytes("Translation resumed.\r\r\n"));
+
+        CollectionAssert.AreEqual(
+            new[] { "Translation resumed." },
+            result.Select(item => item.Text).ToArray());
+    }
+
+    [TestMethod]
+    public void FlushIdle_BottomRowScrollDoesNotDiscardCompletedOutput()
+    {
+        VtTextExtractor extractor = new(viewportRows: 20);
+
+        _ = extractor.Feed(Encoding.UTF8.GetBytes(
+            "\u001b[20;1HTranslation resumed.\r\nPS C:\\>   \u001b[20;10H"));
+        IReadOnlyList<ExtractedText> result = extractor.FlushIdle();
+
+        CollectionAssert.Contains(
+            result.Select(item => item.Text).ToArray(),
+            "Translation resumed.");
+    }
+
+    [TestMethod]
     public void Feed_DoesNotJoinDistinctLowercaseLogicalLines()
     {
         VtTextExtractor extractor = new();

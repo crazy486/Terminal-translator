@@ -170,7 +170,8 @@ public static class HostCommand
                         statusAggregator.RecordProviderFailure(code, 1, null, null),
                         token),
                     initialSize.X,
-                    analysisLineFilter: submittedCommands.ClassifyAnalysisLine,
+                    viewportRows: initialSize.Y,
+                    submittedCommandTracker: submittedCommands,
                     secretDetector: secretDetector,
                     session: translationSession,
                     providerFingerprint: settings.Fingerprint,
@@ -202,14 +203,14 @@ public static class HostCommand
             ConsoleInputRelay inputRelay = new(
                 global::System.Console.OpenStandardInput(),
                 pseudoConsole.Input,
-                submittedCommands.Observe);
+                bytes => _ = pipeline.TryObserveSubmittedInput(bytes));
             ConsoleOutputRelay outputRelay = new(
                 pseudoConsole.Output,
                 global::System.Console.OpenStandardOutput(),
                 pipeline);
             PseudoConsoleResizeMonitor resizeMonitor = new(
                 pseudoConsole,
-                resized: (columns, _) => pipeline.Resize(columns));
+                resized: (columns, rows) => pipeline.Resize(columns, rows));
             Task inputTask = inputRelay.CopyAsync(interactiveCancellation.Token);
             Task outputTask = outputRelay.CopyAsync(runtimeCancellation.Token);
             Task resizeTask = resizeMonitor.RunAsync(interactiveCancellation.Token);

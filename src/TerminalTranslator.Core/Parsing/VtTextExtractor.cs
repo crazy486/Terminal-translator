@@ -15,6 +15,7 @@ public sealed class VtTextExtractor
     private readonly StringBuilder _control = new();
     private readonly List<string> _pendingLines = [];
     private int _viewportColumns;
+    private int _viewportRows;
     private ParserState _state;
     private ParserState _controlStringState;
     private bool _pendingCarriageReturn;
@@ -24,14 +25,25 @@ public sealed class VtTextExtractor
     private bool _currentLineContinuesPrevious;
     private bool _currentLineStartedAtRightMargin;
     private bool _cursorAtRightMargin;
+    private int _cursorRow = 1;
+    private int _cursorColumn;
+    private int _lineRow = 1;
+    private int _lineOriginColumn;
 
-    public VtTextExtractor(int viewportColumns = 120)
+    public VtTextExtractor(int viewportColumns = 120, int viewportRows = 30)
     {
         _viewportColumns = Math.Max(1, viewportColumns);
+        _viewportRows = Math.Max(1, viewportRows);
     }
 
-    public void Resize(int viewportColumns) =>
+    public void Resize(int viewportColumns, int? viewportRows = null)
+    {
         Volatile.Write(ref _viewportColumns, Math.Max(1, viewportColumns));
+        if (viewportRows.HasValue)
+        {
+            Volatile.Write(ref _viewportRows, Math.Max(1, viewportRows.Value));
+        }
+    }
 
     public void Reset()
     {
@@ -39,6 +51,10 @@ public sealed class VtTextExtractor
         InvalidateCandidate();
         ResetControl();
         _alternateBuffer = false;
+        _cursorRow = 1;
+        _cursorColumn = 0;
+        _lineRow = 1;
+        _lineOriginColumn = 0;
     }
 
     public IReadOnlyList<ExtractedText> Feed(ReadOnlySpan<byte> bytes)
@@ -89,14 +105,13 @@ public sealed class VtTextExtractor
         List<ExtractedText> output = [];
         if (_line.Length > 0)
         {
-            string line = _line.ToString().TrimEnd();
-            _line.Clear();
-            if (line.Length > 0)
-            {
-                _pendingLines.Add(line);
-            }
+            // Idle is a temporal flush boundary, not a terminal line break.
+            // Finalize through the normal line path so a right-margin visual
+            // continuation is reconstructed before the pending block is emitted.
+            CompleteLine(output);
         }
 
+        _pendingCarriageReturn = false;
         FlushPending(output, SourceBoundary.IdlePrompt);
         return output;
     }
@@ -105,7 +120,7 @@ public sealed class VtTextExtractor
     {
         if (_state != ParserState.Normal)
         {
-            ConsumeControl(value);
+            ConsumeControl(value, output);
             return;
         }
 
@@ -115,6 +130,14 @@ public sealed class VtTextExtractor
             {
                 _pendingCarriageReturn = false;
                 CompleteLine(output);
+                AdvanceLine();
+                return;
+            }
+
+            if (value == '\r')
+            {
+                _cursorColumn = 0;
+                _cursorAtRightMargin = false;
                 return;
             }
 
@@ -127,6 +150,8 @@ public sealed class VtTextExtractor
 
             _pendingCarriageReturn = false;
             _line.Clear();
+            _lineRow = _cursorRow;
+            _lineOriginColumn = _cursorColumn;
         }
 
         if (value == '\u001b')
@@ -145,46 +170,33 @@ public sealed class VtTextExtractor
         {
             case '\r':
                 _pendingCarriageReturn = true;
+                _cursorColumn = 0;
+                _cursorAtRightMargin = false;
                 break;
             case '\n':
                 CompleteLine(output);
+                AdvanceLine();
                 break;
             case '\b':
-                if (_line.Length > 0)
-                {
-                    _line.Length--;
-                }
+                _cursorColumn = Math.Max(0, _cursorColumn - 1);
                 break;
             case '\t':
-                _line.Append("    ");
+                int nextTabStop = ((_cursorColumn / 4) + 1) * 4;
+                while (_cursorColumn < nextTabStop)
+                {
+                    WriteCharacter(' ', output);
+                }
                 break;
             default:
                 if (!char.IsControl(value))
                 {
-                    if (_line.Length == 0 && _pendingLines.Count > 0 &&
-                        (_previousLineReachedMargin || _cursorAtRightMargin))
-                    {
-                        if (!_currentLineContinuesPrevious)
-                        {
-                            _currentLineContinuesPrevious = true;
-                            _currentLineStartedAtRightMargin = _cursorAtRightMargin;
-                        }
-
-                        if (_cursorAtRightMargin && _pendingLines[^1].EndsWith(value))
-                        {
-                            _cursorAtRightMargin = false;
-                            break;
-                        }
-                    }
-
-                    _cursorAtRightMargin = false;
-                    _line.Append(value);
+                    WriteCharacter(value, output);
                 }
                 break;
         }
     }
 
-    private void ConsumeControl(char value)
+    private void ConsumeControl(char value, List<ExtractedText> output)
     {
         if (_state == ParserState.Escape)
         {
@@ -243,12 +255,12 @@ public sealed class VtTextExtractor
 
         if (value is >= '@' and <= '~')
         {
-            ApplyCsi(_control.ToString());
+            ApplyCsi(_control.ToString(), output);
             ResetControl();
         }
     }
 
-    private void ApplyCsi(string sequence)
+    private void ApplyCsi(string sequence, List<ExtractedText> output)
     {
         if (sequence is "?1049h" or "?1047h" or "?47h")
         {
@@ -260,18 +272,222 @@ public sealed class VtTextExtractor
             _alternateBuffer = false;
             InvalidateCandidate();
         }
-        else if (sequence.EndsWith('J') || sequence.EndsWith('K'))
+        else if (sequence.EndsWith('J'))
         {
             InvalidateCandidate();
         }
+        else if (sequence.EndsWith('K'))
+        {
+            ApplyEraseInLine(sequence);
+        }
         else if (sequence.EndsWith('H') || sequence.EndsWith('f'))
         {
-            string[] parts = sequence[..^1].Split(';');
-            if (parts.Length >= 2 && int.TryParse(parts[^1], out int column))
+            int[] parameters = ParseParameters(sequence[..^1], defaultValue: 1);
+            int row = parameters.Length > 0 ? parameters[0] : 1;
+            int column = parameters.Length > 1 ? parameters[1] : 1;
+            MoveCursor(Math.Max(1, row), Math.Max(0, column - 1), output);
+        }
+        else if (sequence.EndsWith('G'))
+        {
+            int[] parameters = ParseParameters(sequence[..^1], defaultValue: 1);
+            MoveCursor(_cursorRow, Math.Max(0, parameters[0] - 1), output);
+        }
+        else if (sequence.EndsWith('d'))
+        {
+            int[] parameters = ParseParameters(sequence[..^1], defaultValue: 1);
+            MoveCursor(Math.Max(1, parameters[0]), _cursorColumn, output);
+        }
+        else if (sequence.EndsWith('A'))
+        {
+            MoveCursor(Math.Max(1, _cursorRow - ParameterOrOne(sequence)), _cursorColumn, output);
+        }
+        else if (sequence.EndsWith('B'))
+        {
+            MoveCursor(_cursorRow + ParameterOrOne(sequence), _cursorColumn, output);
+        }
+        else if (sequence.EndsWith('C'))
+        {
+            MoveCursor(_cursorRow, _cursorColumn + ParameterOrOne(sequence), output);
+        }
+        else if (sequence.EndsWith('D'))
+        {
+            MoveCursor(_cursorRow, Math.Max(0, _cursorColumn - ParameterOrOne(sequence)), output);
+        }
+        else if (sequence.EndsWith('E'))
+        {
+            MoveCursor(_cursorRow + ParameterOrOne(sequence), 0, output);
+        }
+        else if (sequence.EndsWith('F'))
+        {
+            MoveCursor(Math.Max(1, _cursorRow - ParameterOrOne(sequence)), 0, output);
+        }
+    }
+
+    private void WriteCharacter(char value, List<ExtractedText> output)
+    {
+        bool continuesAfterExplicitCursorMove = _cursorAtRightMargin;
+        bool preservesLeadingWhitespaceAfterMargin =
+            _previousLineReachedMargin && char.IsWhiteSpace(value);
+        bool continuesAfterCrLfAtMargin = _previousLineReachedMargin &&
+            (preservesLeadingWhitespaceAfterMargin || IsLexicalContinuation(value.ToString()));
+        if (_line.Length == 0 && _pendingLines.Count > 0 &&
+            (continuesAfterExplicitCursorMove || continuesAfterCrLfAtMargin))
+        {
+            if (!_currentLineContinuesPrevious)
             {
-                _cursorAtRightMargin = column >= Volatile.Read(ref _viewportColumns);
+                _currentLineContinuesPrevious = true;
+                _currentLineStartedAtRightMargin =
+                    continuesAfterExplicitCursorMove || preservesLeadingWhitespaceAfterMargin;
+            }
+
+            if (continuesAfterExplicitCursorMove && _pendingLines[^1].EndsWith(value))
+            {
+                _cursorAtRightMargin = false;
+                _cursorColumn++;
+                return;
             }
         }
+
+        if (_line.Length == 0)
+        {
+            _lineRow = _cursorRow;
+            _lineOriginColumn = _cursorColumn;
+        }
+        else if (_lineRow != _cursorRow)
+        {
+            if (_cursorRow > _lineRow)
+            {
+                CompleteLine(output);
+            }
+            else
+            {
+                InvalidateCandidate();
+            }
+
+            _lineRow = _cursorRow;
+            _lineOriginColumn = _cursorColumn;
+        }
+
+        int relativeColumn = _cursorColumn - _lineOriginColumn;
+        if (relativeColumn < 0)
+        {
+            _line.Insert(0, new string(' ', -relativeColumn));
+            _lineOriginColumn = _cursorColumn;
+            relativeColumn = 0;
+        }
+
+        while (_line.Length < relativeColumn)
+        {
+            _line.Append(' ');
+        }
+
+        if (relativeColumn < _line.Length)
+        {
+            _line[relativeColumn] = value;
+        }
+        else
+        {
+            _line.Append(value);
+        }
+
+        _cursorColumn++;
+        _cursorAtRightMargin = _cursorColumn >= Volatile.Read(ref _viewportColumns) - 1;
+    }
+
+    private void MoveCursor(int row, int column, List<ExtractedText> output)
+    {
+        int viewportColumns = Volatile.Read(ref _viewportColumns);
+        row = Math.Min(row, Volatile.Read(ref _viewportRows));
+        bool scrollWrapContinuation = row < _cursorRow &&
+            column >= viewportColumns - 1 &&
+            _pendingLines.Count > 0 &&
+            _previousLineReachedMargin;
+        if (row > _cursorRow)
+        {
+            if (_line.Length > 0)
+            {
+                CompleteLine(output);
+            }
+
+            if (column == 0)
+            {
+                FlushPending(output, SourceBoundary.Line);
+            }
+        }
+        else if (row < _cursorRow && !scrollWrapContinuation)
+        {
+            InvalidateCandidate();
+        }
+
+        _cursorRow = row;
+        _cursorColumn = column;
+        _cursorAtRightMargin = column >= viewportColumns - 1;
+        if (_line.Length == 0)
+        {
+            _lineRow = row;
+            _lineOriginColumn = column;
+        }
+    }
+
+    private void ApplyEraseInLine(string sequence)
+    {
+        int mode = ParseParameters(sequence[..^1], defaultValue: 0)[0];
+        if (mode == 2)
+        {
+            InvalidateCandidate();
+            _lineRow = _cursorRow;
+            _lineOriginColumn = _cursorColumn;
+            return;
+        }
+
+        if (_lineRow != _cursorRow || _line.Length == 0)
+        {
+            return;
+        }
+
+        int relativeColumn = _cursorColumn - _lineOriginColumn;
+        if (mode == 1)
+        {
+            int eraseThrough = Math.Min(_line.Length, Math.Max(0, relativeColumn + 1));
+            for (int index = 0; index < eraseThrough; index++)
+            {
+                _line[index] = ' ';
+            }
+        }
+        else if (relativeColumn <= 0)
+        {
+            _line.Clear();
+            _lineOriginColumn = _cursorColumn;
+        }
+        else if (relativeColumn < _line.Length)
+        {
+            _line.Length = relativeColumn;
+        }
+    }
+
+    private static int[] ParseParameters(string value, int defaultValue)
+    {
+        string normalized = value.TrimStart('?');
+        if (normalized.Length == 0)
+        {
+            return [defaultValue];
+        }
+
+        return normalized.Split(';')
+            .Select(part => int.TryParse(part, out int parsed) ? parsed : defaultValue)
+            .ToArray();
+    }
+
+    private static int ParameterOrOne(string sequence) =>
+        Math.Max(1, ParseParameters(sequence[..^1], defaultValue: 1)[0]);
+
+    private void AdvanceLine()
+    {
+        _cursorRow = Math.Min(_cursorRow + 1, Volatile.Read(ref _viewportRows));
+        _cursorColumn = 0;
+        _cursorAtRightMargin = false;
+        _lineRow = _cursorRow;
+        _lineOriginColumn = 0;
     }
 
     private void ResetControl()
@@ -290,6 +506,8 @@ public sealed class VtTextExtractor
         _currentLineContinuesPrevious = false;
         _currentLineStartedAtRightMargin = false;
         _cursorAtRightMargin = false;
+        _lineRow = _cursorRow;
+        _lineOriginColumn = _cursorColumn;
     }
 
     private void CompleteLine(List<ExtractedText> output)
@@ -297,6 +515,8 @@ public sealed class VtTextExtractor
         if (_alternateBuffer)
         {
             _line.Clear();
+            _lineRow = _cursorRow;
+            _lineOriginColumn = _cursorColumn;
             return;
         }
 
@@ -310,6 +530,8 @@ public sealed class VtTextExtractor
             _currentLineContinuesPrevious = false;
             _currentLineStartedAtRightMargin = false;
             FlushPending(output, SourceBoundary.Line);
+            _lineRow = _cursorRow;
+            _lineOriginColumn = _cursorColumn;
             return;
         }
 
@@ -334,12 +556,14 @@ public sealed class VtTextExtractor
         }
 
         int viewportColumns = Volatile.Read(ref _viewportColumns);
-        int displayWidth = GetDisplayWidth(rawLine);
+        int displayWidth = _lineOriginColumn + GetDisplayWidth(rawLine);
         _previousLineReachedMargin = rawLine.Length > 0 && rawLine[^1] <= 0x7F &&
             displayWidth >= viewportColumns - 1 && displayWidth <= viewportColumns;
         _previousLineEndedWithWhitespace = rawLine.Length > 0 && char.IsWhiteSpace(rawLine[^1]);
         _currentLineContinuesPrevious = false;
         _currentLineStartedAtRightMargin = false;
+        _lineRow = _cursorRow;
+        _lineOriginColumn = _cursorColumn;
     }
 
     private void FlushPending(List<ExtractedText> output, SourceBoundary singleLineBoundary)
@@ -391,19 +615,36 @@ public sealed class VtTextExtractor
     private void AppendContinuation(string line, bool startedAtRightMargin)
     {
         string continuation = startedAtRightMargin ? line : line.TrimStart();
-        if (_pendingLines[^1].Length > 0 && continuation.Length > 0 &&
-            _pendingLines[^1][^1] == continuation[0])
+        string previous = _pendingLines[^1];
+        int overlap = GetSuffixPrefixOverlap(previous, continuation);
+        if (overlap > 0)
         {
-            continuation = continuation[1..];
+            continuation = continuation[overlap..];
         }
 
         if (!startedAtRightMargin && _previousLineEndedWithWhitespace &&
-            !_pendingLines[^1].EndsWith(' '))
+            !previous.EndsWith(' ') && continuation.Length > 0 &&
+            !char.IsWhiteSpace(continuation[0]))
         {
             _pendingLines[^1] += ' ';
         }
 
         _pendingLines[^1] += continuation;
+    }
+
+    private static int GetSuffixPrefixOverlap(string previous, string continuation)
+    {
+        int maximum = Math.Min(previous.Length, continuation.Length);
+        for (int length = maximum; length > 0; length--)
+        {
+            if (previous.AsSpan(previous.Length - length, length)
+                .SequenceEqual(continuation.AsSpan(0, length)))
+            {
+                return length;
+            }
+        }
+
+        return 0;
     }
 
     private static int CountIndent(string text)

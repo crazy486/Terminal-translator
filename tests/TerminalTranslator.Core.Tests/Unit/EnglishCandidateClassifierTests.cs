@@ -40,12 +40,14 @@ public sealed class EnglishCandidateClassifierTests
     [DataRow("> Write-Output \"The build failed because configuration is missing.\"")]
     [DataRow(">> > Write-Error \"The build failed because configuration is missing.\"")]
     [DataRow("> git status")]
-    [DataRow("Translation enabled.")]
-    [DataRow("PS D:\\Projects\\Terminal Translator>")]
-    [DataRow("PS D:\\Projects\\Terminal Translator>\n >>")]
-    [DataRow("D:\\Projects\\Terminal Translator>")]
-    public void Classify_RejectsPowerShellCommandEchoAndTranslatorStatus(string text) =>
+    public void Classify_RejectsCommandShapedTechnicalText(string text) =>
         Assert.IsFalse(Classify(text).IsEligible);
+
+    [TestMethod]
+    [DataRow("Translation enabled.")]
+    [DataRow("Arbitrary future control-plane output remains English.")]
+    public void Classify_DoesNotOwnTerminalTranslatorControlFiltering(string text) =>
+        Assert.IsTrue(Classify(text).IsEligible);
 
     [TestMethod]
     [DataRow("The build output contains PS D:\\Projects\\Terminal Translator> as diagnostic text.")]

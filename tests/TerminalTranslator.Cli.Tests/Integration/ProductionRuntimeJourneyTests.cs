@@ -5,6 +5,7 @@ using TerminalTranslator.Cli.Commands;
 using TerminalTranslator.Cli.Configuration;
 using TerminalTranslator.Core.Translation;
 using TerminalTranslator.Core.Models;
+using TerminalTranslator.Core.Sessions;
 using TerminalTranslator.Windows.ConPty;
 using TerminalTranslator.Windows.Console;
 using TerminalTranslator.Windows.Ipc;
@@ -15,6 +16,80 @@ namespace TerminalTranslator.Cli.Tests.Integration;
 [DoNotParallelize]
 public sealed class ProductionRuntimeJourneyTests
 {
+    [TestMethod]
+    public async Task DisabledEpoch_OrdinaryCommandsOnlyTranslateFirstReenabledOutput()
+    {
+        EpochJourneyResult result = await RunDisabledEpochAsync(
+            "Write-Output \"Disabled one.\"\r" +
+            "Write-Output \"Disabled two.\"\r");
+
+        Assert.AreEqual(0, result.RequestCountWhileDisabled);
+        CollectionAssert.AreEqual(
+            new[] { "Translation resumed." },
+            result.Sources,
+            result.Diagnostic);
+    }
+
+    [TestMethod]
+    public async Task DisabledEpoch_MultilineContinuationLeavesNoTrackerOwnership()
+    {
+        EpochJourneyResult result = await RunDisabledEpochAsync(
+            "$items = @(\r" +
+            "\"First item\"\r" +
+            "\"Second item\"\r" +
+            "\"Third item\"\r" +
+            ")\r");
+
+        Assert.AreEqual(0, result.RequestCountWhileDisabled);
+        CollectionAssert.AreEqual(
+            new[] { "Translation resumed." },
+            result.Sources,
+            result.Diagnostic);
+    }
+
+    [TestMethod]
+    public async Task DisabledEpoch_MoreThanTrackerHistoryCannotConsumeFirstReenabledOutput()
+    {
+        string disabledInput = string.Concat(
+            Enumerable.Range(1, 70)
+                .Select(index => $"$disabled{index:00} = 'history line {index:00}'\r"));
+        EpochJourneyResult result = await RunDisabledEpochAsync(disabledInput);
+
+        Assert.AreEqual(0, result.RequestCountWhileDisabled);
+        CollectionAssert.AreEqual(
+            new[] { "Translation resumed." },
+            result.Sources,
+            result.Diagnostic);
+    }
+
+    [TestMethod]
+    public async Task DisabledEpoch_ActiveControlTransactionCannotCrossGenerationBoundary()
+    {
+        EpochJourneyResult result = await RunDisabledEpochAsync(
+            "Write-Output \"Disabled while control was active.\"\r",
+            beginWithActiveControlTransaction: true);
+
+        Assert.AreEqual(0, result.RequestCountWhileDisabled);
+        CollectionAssert.AreEqual(
+            new[] { "Translation resumed." },
+            result.Sources,
+            result.Diagnostic);
+    }
+
+    [TestMethod]
+    public async Task DisabledEpoch_TtOnControlOutputIsOwnedByNewEpoch()
+    {
+        EpochJourneyResult result = await RunDisabledEpochAsync(
+            "Write-Output \"Disabled output.\"\r",
+            includeReenableControl: true);
+
+        Assert.AreEqual(0, result.RequestCountWhileDisabled);
+        CollectionAssert.AreEqual(
+            new[] { "Translation resumed." },
+            result.Sources,
+            result.Diagnostic);
+    }
+
     [TestMethod]
     public async Task AnalysisChunksInsideIdleWindow_AreOneLogicalCandidate()
     {
@@ -202,6 +277,11 @@ public sealed class ProductionRuntimeJourneyTests
             StringAssert.Contains(allSources, output);
         }
 
+        CollectionAssert.AreEqual(
+            outputs,
+            provider.Requests.Select(request => request.SourceText).ToArray(),
+            allSources);
+
         Assert.IsFalse(allSources.Contains("PS ", StringComparison.Ordinal), allSources);
         Assert.IsFalse(allSources.Contains("Write-Output", StringComparison.Ordinal), allSources);
         string expectedRaw = string.Concat(commands.Select((command, index) =>
@@ -267,7 +347,8 @@ public sealed class ProductionRuntimeJourneyTests
             sink,
             TimeSpan.FromSeconds(2),
             viewportColumns: 60,
-            analysisLineFilter: submittedCommands.ClassifyAnalysisLine);
+            viewportRows: 20,
+            submittedCommandTracker: submittedCommands);
         await using MinimalControlPipeServer controlServer = new(
             controlPipe, sessionId, fingerprint,
             _ =>
@@ -276,8 +357,10 @@ public sealed class ProductionRuntimeJourneyTests
                 return Task.CompletedTask;
             });
         Task controlTask = controlServer.RunAsync(cancellation.Token);
-        await using ConPtySession conPty = ConPtySession.StartPowerShell(
-            Environment.CurrentDirectory,
+        await using ConPtySession conPty = ConPtySession.Start(
+            "powershell.exe",
+            "-NoLogo -NoExit -Command \"Set-PSReadLineOption -HistorySaveStyle SaveNothing\"",
+            Path.GetTempPath(),
             new Coord(60, 20));
         await using MemoryStream programOutput = new();
         Task outputTask = new ConsoleOutputRelay(conPty.Output, programOutput, pipeline)
@@ -291,7 +374,7 @@ public sealed class ProductionRuntimeJourneyTests
             cancellation.Token);
         await RelayInputAsync(
             conPty.Input,
-            submittedCommands,
+            pipeline,
             "Write-Output 'The build failed because a required configuration file is missing.'\r\n",
             cancellation.Token);
         Task providerOrTimeout = await Task.WhenAny(
@@ -308,26 +391,26 @@ public sealed class ProductionRuntimeJourneyTests
         ];
         foreach (string acceptanceCommand in acceptanceCommands)
         {
-            await RelayInputAsync(conPty.Input, submittedCommands, acceptanceCommand, cancellation.Token);
+            await RelayInputAsync(conPty.Input, pipeline, acceptanceCommand, cancellation.Token);
             await Task.Delay(400, cancellation.Token);
         }
 
         await RelayInputAsync(
             conPty.Input,
-            submittedCommands,
+            pipeline,
             "$value = Read-Host \"Paste Unicode text\"\r\n",
             cancellation.Token);
         await Task.Delay(250, cancellation.Token);
-        await RelayInputAsync(conPty.Input, submittedCommands, "high-fidelity-paste\r\n", cancellation.Token);
+        await RelayInputAsync(conPty.Input, pipeline, "high-fidelity-paste\r\n", cancellation.Token);
         await Task.Delay(400, cancellation.Token);
         await RelayInputAsync(
             conPty.Input,
-            submittedCommands,
+            pipeline,
             "Write-Output 'The captured value remains ordinary English output.'\r\n",
             cancellation.Token);
         await Task.Delay(400, cancellation.Token);
 
-        await RelayInputAsync(conPty.Input, submittedCommands, "exit 0\r\n", cancellation.Token);
+        await RelayInputAsync(conPty.Input, pipeline, "exit 0\r\n", cancellation.Token);
         int exitCode = await conPty.WaitForExitAsync(cancellation.Token);
         await conPty.CompleteInputAsync();
         conPty.ClosePseudoConsole();
@@ -355,10 +438,14 @@ public sealed class ProductionRuntimeJourneyTests
         Assert.IsFalse(provider.Requests.Any(request => request.StartsWith('>')), allCandidates);
         Assert.IsFalse(provider.Requests.Any(request => request.Contains("$value = Read-Host", StringComparison.Ordinal)), allCandidates);
         Assert.IsFalse(provider.Requests.Any(IsPowerShellPrompt), allCandidates);
-        CollectionAssert.Contains(provider.Requests, "Unicode round trip: 你好，世界");
         CollectionAssert.Contains(
             provider.Requests,
-            "modified: ProductionRuntimeJourneyTests.cs RunnableUserStory1AcceptanceTests.cs");
+            "Unicode round trip: 你好，世界",
+            allCandidates);
+        CollectionAssert.Contains(
+            provider.Requests,
+            "modified: ProductionRuntimeJourneyTests.cs RunnableUserStory1AcceptanceTests.cs",
+            allCandidates);
     }
 
     [TestMethod]
@@ -620,6 +707,74 @@ public sealed class ProductionRuntimeJourneyTests
         }
     }
 
+    private static async Task<EpochJourneyResult> RunDisabledEpochAsync(
+        string disabledInput,
+        bool beginWithActiveControlTransaction = false,
+        bool includeReenableControl = false)
+    {
+        Guid sessionId = Guid.NewGuid();
+        const string providerFingerprint = "epoch-provider";
+        RecordingProvider provider = new();
+        RecordingEventSink sink = new();
+        SubmittedCommandTracker submittedCommands = new();
+        SystemClock clock = new();
+        using TranslationSession session = new(sessionId, clock);
+        session.Start();
+        await using ProductionTranslationPipeline pipeline =
+            ProductionRuntimeComposition.CreateTranslationPipeline(
+                sessionId,
+                provider,
+                sink,
+                TimeSpan.FromSeconds(2),
+                submittedCommandTracker: submittedCommands,
+                session: session,
+                providerFingerprint: providerFingerprint);
+        Assert.IsTrue(pipeline.Enable(providerFingerprint, consent: true));
+
+        if (beginWithActiveControlTransaction)
+        {
+            submittedCommands.Observe("tt status\r"u8.ToArray());
+        }
+
+        Assert.IsTrue(pipeline.Disable());
+        Assert.IsFalse(pipeline.TryObserveSubmittedInput(Encoding.UTF8.GetBytes(disabledInput)));
+        Assert.IsFalse(pipeline.TryOffer(
+            Encoding.UTF8.GetBytes("Disabled output must bypass analysis.\r\n")));
+        await Task.Delay(180);
+        int requestCountWhileDisabled = provider.Requests.Count;
+
+        if (includeReenableControl)
+        {
+            Assert.IsFalse(pipeline.TryObserveSubmittedInput("tt on\r"u8.ToArray()));
+        }
+
+        Assert.IsTrue(pipeline.Enable(
+            providerFingerprint,
+            consent: true,
+            claimDormantEnableControl: includeReenableControl));
+        if (includeReenableControl)
+        {
+            Assert.IsTrue(pipeline.TryOffer(Encoding.UTF8.GetBytes(
+                "Translation enabled.\r\nPS C:\\> \r\n")));
+            await Task.Delay(180);
+        }
+
+        Assert.IsTrue(pipeline.TryOffer(
+            Encoding.UTF8.GetBytes("Translation resumed.\r\n")));
+        await WaitUntilAsync(() => provider.Requests.Count > requestCountWhileDisabled, TimeSpan.FromSeconds(2));
+
+        string[] sources = provider.Requests.Select(request => request.SourceText).ToArray();
+        return new EpochJourneyResult(
+            requestCountWhileDisabled,
+            sources,
+            string.Join(" || ", sources));
+    }
+
+    private sealed record EpochJourneyResult(
+        int RequestCountWhileDisabled,
+        string[] Sources,
+        string Diagnostic);
+
     private static async Task<bool> WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     {
         DateTime deadline = DateTime.UtcNow + timeout;
@@ -638,14 +793,15 @@ public sealed class ProductionRuntimeJourneyTests
 
     private static async Task RelayInputAsync(
         Stream pseudoConsoleInput,
-        SubmittedCommandTracker submittedCommands,
+        ProductionTranslationPipeline pipeline,
         string text,
         CancellationToken cancellationToken)
     {
+        string vtInput = text.Replace("\r\n", "\r", StringComparison.Ordinal);
         await new ConsoleInputRelay(
-            new MemoryStream(Encoding.UTF8.GetBytes(text)),
+            new MemoryStream(Encoding.UTF8.GetBytes(vtInput)),
             pseudoConsoleInput,
-            submittedCommands.Observe).CopyAsync(cancellationToken);
+            bytes => _ = pipeline.TryObserveSubmittedInput(bytes)).CopyAsync(cancellationToken);
     }
 
     private static bool IsPowerShellPrompt(string candidate)
