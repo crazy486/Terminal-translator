@@ -31,11 +31,14 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _worker;
     private long _sequence;
+    private long _rawDiscontinuityVersion;
+    private long _processingRawDiscontinuityVersion;
     private long _processingGeneration = -1;
     private long _legacyObservationEpoch;
     private bool _processingTranslationEnabled;
     private int _pendingExtractedBytes;
     private int _enabled;
+    private bool _discardUntilBoundary;
 
     public ProductionTranslationPipeline(
         Guid sessionId,
@@ -72,7 +75,7 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
         {
             SingleReader = true,
             SingleWriter = true,
-            FullMode = BoundedChannelFullMode.DropWrite,
+            FullMode = BoundedChannelFullMode.Wait,
             AllowSynchronousContinuations = false,
         });
         _submittedCommandTracker?.BeginObservationEpoch(_session?.Generation ?? 0);
@@ -181,11 +184,21 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
         return _submittedCommandTracker.Observe(capture.Generation, bytes);
     }
 
-    private bool TryOfferCore(ReadOnlyMemory<byte> bytes, AnalysisCaptureState capture) =>
-        _analysis.Writer.TryWrite(new AnalysisChunk(
+    private bool TryOfferCore(ReadOnlyMemory<byte> bytes, AnalysisCaptureState capture)
+    {
+        long discontinuityVersion = Volatile.Read(ref _rawDiscontinuityVersion);
+        if (_analysis.Writer.TryWrite(new AnalysisChunk(
             capture.Generation,
             capture.TranslationEnabled,
-            bytes.ToArray()));
+            discontinuityVersion,
+            bytes.ToArray())))
+        {
+            return true;
+        }
+
+        Interlocked.Increment(ref _rawDiscontinuityVersion);
+        return false;
+    }
 
     private AnalysisCaptureState CaptureState()
     {
@@ -232,7 +245,8 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
                     }
                     catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                     {
-                        await BufferExtractedAsync(
+                        ObserveRawDiscontinuity();
+                        await BufferOrDiscardExtractedAsync(
                             _extractor.FlushIdle(),
                             _processingGeneration,
                             _processingTranslationEnabled,
@@ -245,7 +259,8 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
                     }
                     catch (ChannelClosedException)
                     {
-                        await BufferExtractedAsync(
+                        ObserveRawDiscontinuity();
+                        await BufferOrDiscardExtractedAsync(
                             _extractor.Flush(),
                             _processingGeneration,
                             _processingTranslationEnabled,
@@ -259,7 +274,8 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
                 }
             }
 
-            await BufferExtractedAsync(
+            ObserveRawDiscontinuity();
+            await BufferOrDiscardExtractedAsync(
                 _extractor.Flush(),
                 _processingGeneration,
                 _processingTranslationEnabled,
@@ -276,6 +292,12 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
 
     private async Task ProcessBytesAsync(AnalysisChunk chunk, CancellationToken cancellationToken)
     {
+        ObserveRawDiscontinuity();
+        if (chunk.RawDiscontinuityVersion < _processingRawDiscontinuityVersion)
+        {
+            return;
+        }
+
         if (_processingGeneration >= 0 &&
             (chunk.Generation != _processingGeneration ||
              chunk.TranslationEnabled != _processingTranslationEnabled))
@@ -293,17 +315,55 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
             // enabled chunk therefore begins a new observable terminal epoch;
             // cursor/redraw state from the prior generation cannot be reused.
             _extractor.Reset();
+            _discardUntilBoundary = false;
         }
 
         _submittedCommandTracker?.BeginObservationEpoch(chunk.Generation);
         _processingGeneration = chunk.Generation;
         _processingTranslationEnabled = chunk.TranslationEnabled;
 
-        await BufferExtractedAsync(
+        await BufferOrDiscardExtractedAsync(
             _extractor.Feed(chunk.Bytes),
             chunk.Generation,
             chunk.TranslationEnabled,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private void ObserveRawDiscontinuity()
+    {
+        long latest = Volatile.Read(ref _rawDiscontinuityVersion);
+        if (latest <= _processingRawDiscontinuityVersion)
+        {
+            return;
+        }
+
+        _processingRawDiscontinuityVersion = latest;
+        _extractor.Reset();
+        ClearBuffered();
+        _discardUntilBoundary = true;
+    }
+
+    private Task BufferOrDiscardExtractedAsync(
+        IReadOnlyList<ExtractedText> extractedItems,
+        long generation,
+        bool translationEnabled,
+        CancellationToken cancellationToken)
+    {
+        if (_discardUntilBoundary)
+        {
+            if (extractedItems.Count > 0)
+            {
+                _discardUntilBoundary = false;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        return BufferExtractedAsync(
+            extractedItems,
+            generation,
+            translationEnabled,
+            cancellationToken);
     }
 
     private async Task BufferExtractedAsync(
@@ -408,7 +468,8 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
                 CandidateClassification classification = _classifier.Classify(
                     candidate.Text,
                     candidate.Layout,
-                    candidate.Boundary);
+                    candidate.Boundary,
+                    programOutputOwnershipEstablished: _submittedCommandTracker is not null);
                 Record(TranslationRuntimeStage.ClassifierInvoked, generation);
                 if (!classification.IsEligible)
                 {
@@ -494,7 +555,8 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
         CandidateClassification classification = _classifier.Classify(
             candidate.Text,
             candidate.Layout,
-            candidate.Boundary);
+            candidate.Boundary,
+            programOutputOwnershipEstablished: _submittedCommandTracker is not null);
         Record(TranslationRuntimeStage.ClassifierInvoked, generation, sequence);
         TimeSpan createdAt = _clock.MonotonicNow;
         OutputSegment segment = new(
@@ -731,6 +793,7 @@ public sealed partial class ProductionTranslationPipeline : INonBlockingAnalysis
     private readonly record struct AnalysisChunk(
         long Generation,
         bool TranslationEnabled,
+        long RawDiscontinuityVersion,
         byte[] Bytes);
 
     private readonly record struct AnalysisCaptureState(

@@ -11,7 +11,11 @@ public sealed record CandidateClassification(
 
 public sealed partial class EnglishCandidateClassifier
 {
-    public CandidateClassification Classify(string text, LayoutHints layout, SourceBoundary boundary)
+    public CandidateClassification Classify(
+        string text,
+        LayoutHints layout,
+        SourceBoundary boundary,
+        bool programOutputOwnershipEstablished = false)
     {
         ArgumentNullException.ThrowIfNull(text);
         string normalized = WhitespaceRegex().Replace(text.Trim(), " ");
@@ -19,11 +23,11 @@ public sealed partial class EnglishCandidateClassifier
             ? TranslationPriority.High
             : TranslationPriority.Normal;
 
-        bool eligible = IsUsefulEnglish(normalized);
+        bool eligible = IsUsefulEnglish(normalized, programOutputOwnershipEstablished);
         return new CandidateClassification(eligible, priority, normalized.ToUpperInvariant(), layout);
     }
 
-    private static bool IsUsefulEnglish(string text)
+    private static bool IsUsefulEnglish(string text, bool programOutputOwnershipEstablished)
     {
         if (text.Length < 4 || PathRegex().IsMatch(text) || VersionRegex().IsMatch(text))
         {
@@ -31,8 +35,8 @@ public sealed partial class EnglishCandidateClassifier
         }
 
         int asciiLetters = text.Count(character => character is >= 'A' and <= 'Z' or >= 'a' and <= 'z');
-        int cjk = text.Count(character => character is >= '?' and <= '?');
-        if (asciiLetters < 4 || cjk > asciiLetters)
+        int cjk = text.Count(character => character is >= '\u4E00' and <= '\u9FFF');
+        if (asciiLetters < 4 || (cjk > 0 && cjk * 2 >= asciiLetters))
         {
             return false;
         }
@@ -44,8 +48,11 @@ public sealed partial class EnglishCandidateClassifier
         }
 
         string trimmed = text.TrimStart();
+        bool commandLike = programOutputOwnershipEstablished
+            ? CompleteCommandRegex().IsMatch(trimmed)
+            : CommandRegex().IsMatch(trimmed);
         if (CodeRegex().IsMatch(trimmed) ||
-            (CommandRegex().IsMatch(trimmed) && !PowerShellErrorRecordRegex().IsMatch(trimmed)))
+            (commandLike && !PowerShellErrorRecordRegex().IsMatch(trimmed)))
         {
             return false;
         }
@@ -74,6 +81,11 @@ public sealed partial class EnglishCandidateClassifier
 
     [GeneratedRegex(@"^(?:>\s*)*(?:(?:git|npm|npx|dotnet|python|pip|pwsh|powershell|tt|cd|dir|ls)\s+[-\w]|[A-Za-z]+-[A-Za-z]+\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CommandRegex();
+
+    [GeneratedRegex(
+        @"^(?:>\s*)*(?:(?:git|npm|npx|dotnet|python|pip|pwsh|powershell|tt|cd|dir|ls)\s+(?:""[^""]*""|'[^']*'|[-\w./\\]+)(?:\s+(?:""[^""]*""|'[^']*'|[-\w./\\]+))*|[A-Za-z]+-[A-Za-z]+(?:\s+(?:""[^""]*""|'[^']*'|[-\w./\\]+))*)\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex CompleteCommandRegex();
 
     [GeneratedRegex(@"(?:CategoryInfo|FullyQualifiedErrorId)\s*:", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PowerShellErrorRecordRegex();

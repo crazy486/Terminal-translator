@@ -168,28 +168,25 @@ public sealed class TranslationCoordinator
                 segment,
                 providerStartedAt,
                 TranslationCancellationReason.GenerationChange);
-            if (_session?.State is SessionState.Stopping or SessionState.Ended or SessionState.Faulted)
+            await Task.Yield();
+            if (providerTask.IsCompleted)
             {
-                result = await providerTask.ConfigureAwait(false);
+                try
+                {
+                    _ = await providerTask.ConfigureAwait(false);
+                }
+                catch
+                {
+                    // The generation is no longer authorized. Completion is observed
+                    // only to keep cancellation/failure detached from session teardown.
+                }
             }
             else
             {
-                await Task.Yield();
-                if (!providerTask.IsCompleted)
-                {
-                    ObserveDetached(providerTask);
-                    return null;
-                }
-
-                try
-                {
-                    result = await providerTask.ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    return null;
-                }
+                ObserveDetached(providerTask);
             }
+
+            return null;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

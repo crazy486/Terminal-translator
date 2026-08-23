@@ -17,6 +17,19 @@ public sealed class FailureIsolationTests
     private static readonly byte[] ShellInput = Encoding.UTF8.GetBytes("Write-Output 'still responsive'\r\n");
 
     [TestMethod]
+    public async Task ThrowingInputObserver_DoesNotPreventConPtyInputForwarding()
+    {
+        await using MemoryStream childInput = new();
+        await new ConsoleInputRelay(
+            new MemoryStream(ShellInput),
+            childInput,
+            _ => throw new InvalidOperationException("analysis observer failed"))
+            .CopyAsync(CancellationToken.None);
+
+        CollectionAssert.AreEqual(ShellInput, childInput.ToArray());
+    }
+
+    [TestMethod]
     public async Task SlowProvider_DoesNotBackpressureRawOutputOrShellInput()
     {
         ManualClock clock = new();
@@ -188,11 +201,12 @@ public sealed class FailureIsolationTests
         CollectionAssert.AreEqual(
             Encoding.UTF8.GetBytes("frame before shutdown\r\nfinal frame during shutdown\r\n"),
             programOutput.ToArray());
-        Assert.IsFalse(ignoredTranslation.IsCompleted, "The provider intentionally still ignores cancellation.");
+        Assert.IsNull(
+            await ignoredTranslation.WaitAsync(TimeSpan.FromSeconds(1)),
+            "Session teardown must detach a provider that ignores cancellation.");
 
         await AssertInputUnchangedAsync();
         provider.Complete(new TranslationResult("过期翻译。"));
-        Assert.IsNull(await ignoredTranslation.WaitAsync(TimeSpan.FromSeconds(1)));
         Assert.AreEqual(0, eventSink.Items.Count);
     }
 

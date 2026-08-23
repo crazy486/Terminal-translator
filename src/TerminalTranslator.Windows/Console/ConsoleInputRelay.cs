@@ -16,7 +16,16 @@ public sealed class ConsoleInputRelay(
                 break;
             }
 
-            inputObserver?.Invoke(buffer.AsMemory(0, count));
+            try
+            {
+                inputObserver?.Invoke(buffer.AsMemory(0, count));
+            }
+            catch
+            {
+                // Input forwarding is the primary path. Analysis ownership tracking
+                // is optional and must never prevent bytes from reaching the ConPTY.
+            }
+
             await pseudoConsoleInput.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
             await pseudoConsoleInput.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
