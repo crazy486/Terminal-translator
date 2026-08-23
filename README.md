@@ -1,9 +1,9 @@
 # Terminal Translator
 
-Terminal Translator runs a dedicated Windows PowerShell session in Windows Terminal and shows
-useful English output with Simplified Chinese translations in a separate companion pane. The
-program pane remains the source of truth: translation never replaces its output and never writes
-to its input.
+Terminal Translator's current Phase-1 live mode runs a dedicated Windows PowerShell session in
+Windows Terminal and shows useful English output with Simplified Chinese translations in a separate
+companion pane. In this mode, the program pane remains the source of truth: translation never
+replaces its output and never writes to its input.
 
 ## Requirements
 
@@ -146,8 +146,9 @@ then publishes and smoke-tests the self-contained executable.
   and suspicious but benign text may produce a privacy skip.
 - Translation display requires the companion pane. Disconnected-period translations are not stored
   or replayed.
-- The tool has no translation history, persistence, telemetry, GUI, cloud synchronization, or
-  background service. Commands such as `tt last` are not implemented.
+- The current Phase-1 implementation has no translation history, terminal-content persistence,
+  telemetry, GUI, cloud synchronization, or background service. Commands such as `tt last` are not
+  implemented; this describes current capability rather than a permanent architecture prohibition.
 - Interactive fidelity is designed for Windows Terminal/ConPTY behavior; other terminal hosts are
   outside the current support boundary.
 

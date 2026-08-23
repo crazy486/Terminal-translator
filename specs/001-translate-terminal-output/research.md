@@ -1,5 +1,11 @@
 # Phase 0 Research: Windows Terminal Output Translation
 
+> **Historical scope note (2026-08-23):** These decisions and rejected alternatives record the
+> architecture selected for Feature 001's Phase-1 hosted live-translation mode under the governance
+> then in force. They remain the truthful rationale for that feature, but they do not prohibit a
+> separately specified future feature from reconsidering transcripts, files, local capture,
+> background components, or other mechanisms under Constitution 2.0.0.
+
 ## Runtime and Language
 
 **Decision**: Build with C# 14 on .NET 10 LTS and require the latest serviced .NET 10 patch for

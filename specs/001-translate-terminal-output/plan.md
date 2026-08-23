@@ -52,6 +52,11 @@ npm, and python interactions
 
 *GATE: Must pass before Phase 0 research. Re-checked after Phase 1 design.*
 
+> **Historical governance note (2026-08-23):** This gate records Feature 001's review against
+> Constitution 1.0.0, including the former Minimal Scope principle. Constitution 2.0.0 does not
+> change this plan or its Phase-1 constraints; it only prevents those feature-specific architecture
+> decisions from becoming unexamined prohibitions on future features.
+
 ### Pre-Research Gate
 
 | Principle | Status | Evidence |

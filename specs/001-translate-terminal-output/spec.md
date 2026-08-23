@@ -8,6 +8,12 @@
 
 **Input**: User description: Translate useful English Windows CLI output into Chinese.
 
+**Feature Scope**: This specification governs only Feature 001's Phase-1 hosted live-translation
+mode. Its dedicated session, companion-pane, external-provider, secret-skip, no-background-monitoring,
+and no-terminal-content-persistence requirements remain binding for that mode. They do not preclude
+a separately specified future feature from selecting different capture, retention, provider, host,
+or process-lifecycle behavior after constitution and architecture review.
+
 ## Clarifications
 
 ### Session 2026-08-21
