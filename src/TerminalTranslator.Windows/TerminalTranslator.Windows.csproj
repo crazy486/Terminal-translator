@@ -5,4 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TerminalTranslator.Core\TerminalTranslator.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="PowerShell\TerminalTranslator.Profile.ps1" />
+  </ItemGroup>
 </Project>

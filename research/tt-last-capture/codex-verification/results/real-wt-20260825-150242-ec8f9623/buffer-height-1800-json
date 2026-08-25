@@ -1,0 +1,58 @@
+{
+  "Schema": "tt-capture-verification/set-height/v1",
+  "CapturedAtUtc": "2026-08-25T07:22:04.0193842+00:00",
+  "Before": {
+    "Buffer": {
+      "Width": 87,
+      "Height": 51
+    },
+    "Cursor": {
+      "X": 0,
+      "Y": 50
+    },
+    "Window": {
+      "Left": 0,
+      "Top": 0,
+      "Right": 86,
+      "Bottom": 50,
+      "Width": 87,
+      "Height": 51
+    },
+    "MaximumWindow": {
+      "Width": 87,
+      "Height": 51
+    },
+    "Attributes": 7
+  },
+  "Requested": {
+    "Width": 87,
+    "Height": 1800
+  },
+  "ApiSucceeded": true,
+  "ApiLastError": 0,
+  "AfterInfoSucceeded": true,
+  "AfterInfoLastError": 0,
+  "After": {
+    "Buffer": {
+      "Width": 87,
+      "Height": 1800
+    },
+    "Cursor": {
+      "X": 0,
+      "Y": 50
+    },
+    "Window": {
+      "Left": 0,
+      "Top": 0,
+      "Right": 86,
+      "Bottom": 50,
+      "Width": 87,
+      "Height": 51
+    },
+    "MaximumWindow": {
+      "Width": 87,
+      "Height": 1800
+    },
+    "Attributes": 7
+  }
+}

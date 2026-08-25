@@ -1,0 +1,77 @@
+{
+  "Schema": "tt-capture-verification/console-capture/v1",
+  "CapturedAtUtc": "2026-08-25T07:23:28.5327602+00:00",
+  "SessionId": "dfd6425790f44ff79bb2c7e374d29c36",
+  "Console": {
+    "Buffer": {
+      "Width": 135,
+      "Height": 30
+    },
+    "Cursor": {
+      "X": 0,
+      "Y": 21
+    },
+    "Window": {
+      "Left": 0,
+      "Top": 0,
+      "Right": 134,
+      "Bottom": 29,
+      "Width": 135,
+      "Height": 30
+    },
+    "MaximumWindow": {
+      "Width": 135,
+      "Height": 30
+    },
+    "Attributes": 7
+  },
+  "Rows": [
+    "XXXXXXXXXXXXXXXXX_END_0016",
+    "TT_REFLOW_0017_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "XXXXXXXXXXXX_END_0017",
+    "TT_REFLOW_0018_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "XXXXXXXXXXXX_END_0018",
+    "TT_REFLOW_0019_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "XXXXXXXXXXXX_END_0019",
+    "TT_REFLOW_0020_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "XXXXXXXXXXXX_END_0020",
+    "TT_BOUNDARY:dfd6425790f44ff79bb2c7e374d29c36:0012",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtBoth -Name v5-wide-baseline",
+    "CONSOLE_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v5-",
+    "wide-baseline-console.json",
+    "TRANSCRIPT_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\",
+    "v5-wide-baseline-transcript.json",
+    "TT_BOUNDARY:dfd6425790f44ff79bb2c7e374d29c36:0013",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtConsoleSnapshot -Name v5-narrow",
+    "CONSOLE_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v5-",
+    "narrow-console.json",
+    "TT_BOUNDARY:dfd6425790f44ff79bb2c7e374d29c36:0014",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtConsoleSnapshot -Name v5-wide-again",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "PreviousCompletedBoundary": {
+    "Found": true,
+    "Start": {
+      "Row": 15,
+      "Ordinal": 13
+    },
+    "End": {
+      "Row": 19,
+      "Ordinal": 14
+    },
+    "Rows": [
+      "PS D:\\Projects\\Terminal Translator\u003E Capture-TtConsoleSnapshot -Name v5-narrow",
+      "CONSOLE_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v5-",
+      "narrow-console.json"
+    ],
+    "Text": "PS D:\\Projects\\Terminal Translator\u003E Capture-TtConsoleSnapshot -Name v5-narrow\r\nCONSOLE_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v5-\r\nnarrow-console.json"
+  }
+}

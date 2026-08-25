@@ -7,6 +7,7 @@ namespace TerminalTranslator.Windows.ConPty;
 
 public sealed class ConPtySession : IAsyncDisposable
 {
+    private static readonly object HostedEnvironmentGate = new();
     private readonly Process _process;
     private readonly SafePseudoConsoleHandle _pseudoConsole;
     private bool _disposed;
@@ -33,8 +34,24 @@ public sealed class ConPtySession : IAsyncDisposable
 
     public int ExitCode => _process.ExitCode;
 
-    public static ConPtySession StartPowerShell(string workingDirectory, Coord? size = null) =>
-        Start("powershell.exe", "-NoLogo", workingDirectory, size);
+    public static ConPtySession StartPowerShell(string workingDirectory, Coord? size = null)
+    {
+        lock (HostedEnvironmentGate)
+        {
+            string? previous = Environment.GetEnvironmentVariable("TT_HOSTED_SESSION_ID");
+            try
+            {
+                Environment.SetEnvironmentVariable(
+                    "TT_HOSTED_SESSION_ID",
+                    Environment.GetEnvironmentVariable("TT_SESSION_ID") ?? "feature-001-hosted");
+                return Start("powershell.exe", "-NoLogo", workingDirectory, size);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("TT_HOSTED_SESSION_ID", previous);
+            }
+        }
+    }
 
     public static ConPtySession Start(
         string executable,
@@ -128,7 +145,8 @@ public sealed class ConPtySession : IAsyncDisposable
                     ref startupInfo,
                     out NativeMethods.ProcessInformation processInformation))
             {
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to start PowerShell in ConPTY.");
+                int error = Marshal.GetLastWin32Error();
+                throw new Win32Exception(error, $"Unable to start PowerShell in ConPTY (Win32 {error}).");
             }
 
             try

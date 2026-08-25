@@ -1,0 +1,146 @@
+**********************
+Windows PowerShell 脚本开始
+开始时间: 20260825150245
+用户名: GUWIN\gutia
+RunAs 用户: GUWIN\gutia
+配置名称: 
+计算机: GUWIN (Microsoft Windows NT 10.0.26200.0)
+主机应用程序: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe
+进程 ID: 21264
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+TT_CAPTURE_SESSION_ID=ec8f962397eb4affa95fb92a7a30ddcf
+TT_CAPTURE_RESULTS=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623
+Session-scoped prompt sentinel and transcript are active. No profile was modified.
+Follow manual\README.md exactly. Run Complete-TtVerification when finished.
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0001
+PS D:\Projects\Terminal Translator>
+PS>Invoke-TtCoreCorpus
+TT_T_WRITE_OUTPUT
+TT_T_WRITE_HOST
+TT_T_NATIVE_STDOUT
+TT_T_NATIVE_STDERR
+Get-ChildItem : 找不到驱动器。名为“Z”的驱动器不存在。
+所在位置 D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\manual\Start-RealWtVerification.ps1:247
+ 字符: 5
++     Get-ChildItem 'Z:\__TT_TRANSCRIPT_NONEXISTENT__' -ErrorAction Con ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Z:String) [Get-ChildItem], DriveNotFoundException
+    + FullyQualifiedErrorId : DriveNotFound,Microsoft.PowerShell.Commands.GetChildItemCommand
+Get-ChildItem : 找不到驱动器。名为“Z”的驱动器不存在。
+所在位置 D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\m
+anual\Start-RealWtVerification.ps1:247 字符: 5
++     Get-ChildItem 'Z:\__TT_TRANSCRIPT_NONEXISTENT__' -ErrorAction Con ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Z:String) [Get-ChildItem], DriveNotFou
+   ndException
+    + FullyQualifiedErrorId : DriveNotFound,Microsoft.PowerShell.Commands.GetChildIte
+   mCommand
+
+On branch research/tt-last-capture
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        research-write-test.txt
+        research/
+
+nothing added to commit but untracked files present (use "git add" to track)
+git: 'foo' is not a git command. See 'git --help'.
+
+The most similar command is
+        hook
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    raise RuntimeError(TT_T_PYTHON_ERROR)
+                       ^^^^^^^^^^^^^^^^^
+NameError: name 'TT_T_PYTHON_ERROR' is not defined
+10.0.400
+TT_ORDER_1_STDOUT
+TT_ORDER_2_STDERR
+TT_ORDER_3_STDOUT
+TT_UNICODE_中文_Ω_🙂
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0002
+PS D:\Projects\Terminal Translator>
+PS>Capture-TtBoth -Name v1-v4-core
+
+CONSOLE_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v1-v4-core-console.json
+TRANSCRIPT_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v1-v4-core-transcript.json
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0003
+PS D:\Projects\Terminal Translator>
+PS>Write-Output "CMD1_UNIQUE"
+CMD1_UNIQUE
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0004
+PS D:\Projects\Terminal Translator>
+PS>Write-Output "CMD2_UNIQUE"
+CMD2_UNIQUE
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0005
+PS D:\Projects\Terminal Translator>
+PS>Capture-TtBoth -Name v3-simple
+
+CONSOLE_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v3-simple-console.json
+TRANSCRIPT_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v3-simple-transcript.json
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0006
+PS D:\Projects\Terminal Translator>
+PS>Write-Output "HAS_OUTPUT"
+HAS_OUTPUT
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0007
+PS D:\Projects\Terminal Translator>
+PS>cd .
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0008
+PS D:\Projects\Terminal Translator>
+PS>Capture-TtBoth -Name v3-empty
+
+CONSOLE_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v3-empty-console.json
+TRANSCRIPT_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v3-empty-transcript.json
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0009
+PS D:\Projects\Terminal Translator>
+PS>Write-Output @(
+  "TT_CONTINUATION_A"
+  "TT_CONTINUATION_B"
+)
+TT_CONTINUATION_A
+TT_CONTINUATION_B
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0010
+PS D:\Projects\Terminal Translator>
+PS>Capture-TtBoth -Name v3-continuation
+
+CONSOLE_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v3-continuation-console.json
+TRANSCRIPT_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v3-continuation-transcript.json
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0011
+PS D:\Projects\Terminal Translator>
+PS>Set-TtVerificationCustomPrompt
+PROMPT_STYLE=custom
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0012
+CUSTOM>
+PS>Write-Output "TT_CUSTOM_PROMPT_OUTPUT"
+TT_CUSTOM_PROMPT_OUTPUT
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0013
+CUSTOM>
+PS>Capture-TtBoth -Name v3-custom-prompt
+
+CONSOLE_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v3-custom-prompt-console.json
+TRANSCRIPT_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v3-custom-prompt-transcript.json
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0014
+CUSTOM>
+PS>Set-TtVerificationDefaultPrompt
+PROMPT_STYLE=default
+TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0015
+PS D:\Projects\Terminal Translator>
+PS>Switch-TtVerificationSession
+OLD_SESSION=ec8f962397eb4affa95fb92a7a30ddcf
+NEW_SESSION=dfd6425790f44ff79bb2c7e374d29c36
+TT_BOUNDARY:dfd6425790f44ff79bb2c7e374d29c36:0001
+PS D:\Projects\Terminal Translator>
+PS>Write-Output "TT_SESSION_B_ONLY"
+TT_SESSION_B_ONLY
+TT_BOUNDARY:dfd6425790f44ff79bb2c7e374d29c36:0002
+PS D:\Projects\Terminal Translator>
+PS>Capture-TtBoth -Name v3-session-b
+
+CONSOLE_RESULT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\v3-session-b-console.json

@@ -1,0 +1,26 @@
+**********************
+Windows PowerShell 脚本开始
+开始时间: 20260824000548
+用户名: Guwin\CodexSandboxOffline
+RunAs 用户: Guwin\CodexSandboxOffline
+配置名称: 
+计算机: GUWIN (Microsoft Windows NT 10.0.26200.0)
+主机应用程序: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -Command try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}
+. 'research\tt-last-capture\codex-verification\manual\Start-RealWtVerification.ps1' -ResultsRoot 'research\tt-last-capture\codex-verification\results\smoke'; prompt | Out-Null; Write-Output 'SMOKE_PREVIOUS_OUTPUT'; prompt | Out-Null; Capture-TtTranscriptLast -Name smoke; Capture-TtConsoleSnapshot -Name smoke; Complete-TtVerification
+进程 ID: 30052
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+TT_CAPTURE_SESSION_ID=02177bb61ec44e9c9f09c381367f7513
+TT_CAPTURE_RESULTS=research\tt-last-capture\codex-verification\results\smoke\real-wt-20260824-000545-02177bb6
+Session-scoped prompt sentinel and transcript are active. No profile was modified.
+Follow manual\README.md exactly. Run Complete-TtVerification when finished.
+TT_BOUNDARY:02177bb61ec44e9c9f09c381367f7513:0001
+SMOKE_PREVIOUS_OUTPUT
+TT_BOUNDARY:02177bb61ec44e9c9f09c381367f7513:0002

@@ -1,0 +1,44 @@
+{
+    "Schema":  "tt-capture-verification/transcript-read/v1",
+    "CapturedAtUtc":  "2026-08-23T16:05:48.7847421+00:00",
+    "SessionId":  "02177bb61ec44e9c9f09c381367f7513",
+    "TranscriptPath":  "research\\tt-last-capture\\codex-verification\\results\\smoke\\real-wt-20260824-000545-02177bb6\\transcript.txt",
+    "Measurements":  [
+                         {
+                             "DelayMs":  0,
+                             "FileLengthBytes":  1497,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  1,
+                                                     "EndOrdinal":  2,
+                                                     "BoundaryCount":  2,
+                                                     "Text":  "\r\nSMOKE_PREVIOUS_OUTPUT\r\n"
+                                                 },
+                             "RawSnapshot":  "research\\tt-last-capture\\codex-verification\\results\\smoke\\real-wt-20260824-000545-02177bb6\\smoke-transcript-0ms.txt"
+                         },
+                         {
+                             "DelayMs":  50,
+                             "FileLengthBytes":  1497,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  1,
+                                                     "EndOrdinal":  2,
+                                                     "BoundaryCount":  2,
+                                                     "Text":  "\r\nSMOKE_PREVIOUS_OUTPUT\r\n"
+                                                 },
+                             "RawSnapshot":  "research\\tt-last-capture\\codex-verification\\results\\smoke\\real-wt-20260824-000545-02177bb6\\smoke-transcript-50ms.txt"
+                         },
+                         {
+                             "DelayMs":  200,
+                             "FileLengthBytes":  1497,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  1,
+                                                     "EndOrdinal":  2,
+                                                     "BoundaryCount":  2,
+                                                     "Text":  "\r\nSMOKE_PREVIOUS_OUTPUT\r\n"
+                                                 },
+                             "RawSnapshot":  "research\\tt-last-capture\\codex-verification\\results\\smoke\\real-wt-20260824-000545-02177bb6\\smoke-transcript-200ms.txt"
+                         }
+                     ]
+}

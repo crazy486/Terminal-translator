@@ -1,0 +1,147 @@
+﻿{
+    "Schema":  "tt-capture-verification/ds-static-inspection/v1",
+    "CapturedAtUtc":  "2026-08-23T16:05:15.5587624+00:00",
+    "Finding":  "Every DS ReadConsoleOutputCharacterW probe declares the fourth parameter as uint32 and passes row as uint32; Win32 requires COORD by value.",
+    "Rows":  [
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\child-marker-probe.ps1",
+                     "Line":  29,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, $mb, $cc, [bool], [type[]]@([intptr], [System.Text.StringBuilder], [uint32], [uint32], [uint32].MakeByRefType()), $wc, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\child-marker-probe.ps1",
+                     "Line":  35,
+                     "Text":  "$readCharsM = $nativeT.GetMethod(\u0027ReadConsoleOutputCharacterW\u0027)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\child-marker-probe.ps1",
+                     "Line":  67,
+                     "Text":  "$ra.SetValue($h, 0); $ra.SetValue($line, 1); $ra.SetValue([uint32]$cols, 2); $ra.SetValue([uint32]$y, 3); $ra.SetValue([uint32]0, 4)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\child-marker-probe2.ps1",
+                     "Line":  29,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, $mb, $cc, [bool], [type[]]@([intptr], [System.Text.StringBuilder], [uint32], [uint32], [uint32].MakeByRefType()), $wc, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\child-marker-probe2.ps1",
+                     "Line":  35,
+                     "Text":  "$readCharsM = $nativeT.GetMethod(\u0027ReadConsoleOutputCharacterW\u0027)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\child-marker-probe2.ps1",
+                     "Line":  72,
+                     "Text":  "$ra.SetValue($h, 0); $ra.SetValue($line, 1); $ra.SetValue([uint32]$cols, 2); $ra.SetValue([uint32]$y, 3); $ra.SetValue([uint32]0, 4)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v2.ps1",
+                     "Line":  39,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, [System.Reflection.MethodAttributes]::Public -bor [System.Reflection.MethodAttributes]::Static -bor [System.Reflection.MethodAttributes]::PinvokeImpl, [System.Reflection.CallingConventions]::Standard, [bool], [type[]]@([intptr], [char[]], [uint32], [uint32], [uint32].MakeByRefType()), [System.Runtime.InteropServices.CallingConvention]::Winapi, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v2.ps1",
+                     "Line":  46,
+                     "Text":  "$readCharsM = $nativeT.GetMethod(\u0027ReadConsoleOutputCharacterW\u0027)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v2.ps1",
+                     "Line":  80,
+                     "Text":  "$readArgs = @($h, $chars, [uint32]$cols, [uint32]$y, [uint32]0)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v3.ps1",
+                     "Line":  31,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, $mb, $cc, [bool], [type[]]@([intptr], [char[]], [uint32], [uint32], [uint32].MakeByRefType()), $wc, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v3.ps1",
+                     "Line":  37,
+                     "Text":  "$readCharsM = $nativeT.GetMethod(\u0027ReadConsoleOutputCharacterW\u0027)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v3.ps1",
+                     "Line":  70,
+                     "Text":  "$readArgs = @($h, $chars, [uint32]$cols, [uint32]$y, [uint32]0)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v4.ps1",
+                     "Line":  31,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, $mb, $cc, [bool], [type[]]@([intptr], [char[]], [uint32], [uint32], [uint32].MakeByRefType()), $wc, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v4.ps1",
+                     "Line":  37,
+                     "Text":  "$readCharsM = $nativeT.GetMethod(\u0027ReadConsoleOutputCharacterW\u0027)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v4.ps1",
+                     "Line":  80,
+                     "Text":  "$readArgs = @($h, $chars, [uint32]$cols, [uint32]$y, [uint32]0)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v5.ps1",
+                     "Line":  34,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, $mb, $cc, [bool], [type[]]@([intptr], [System.Text.StringBuilder], [uint32], [uint32], [uint32].MakeByRefType()), $wc, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v5.ps1",
+                     "Line":  40,
+                     "Text":  "$readCharsM = $nativeT.GetMethod(\u0027ReadConsoleOutputCharacterW\u0027)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v5.ps1",
+                     "Line":  83,
+                     "Text":  "$readArgs = @($h, $line, [uint32]$cols, [uint32]$y, [uint32]0)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v6.ps1",
+                     "Line":  31,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, $mb, $cc, [bool], [type[]]@([intptr], [System.Text.StringBuilder], [uint32], [uint32], [uint32].MakeByRefType()), $wc, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v6.ps1",
+                     "Line":  37,
+                     "Text":  "$readCharsM = $nativeT.GetMethod(\u0027ReadConsoleOutputCharacterW\u0027)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump-v6.ps1",
+                     "Line":  98,
+                     "Text":  "$readArgs.SetValue([uint32]$y, 3)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\console-buffer-dump.ps1",
+                     "Line":  39,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, [System.Reflection.MethodAttributes]::Public -bor [System.Reflection.MethodAttributes]::Static -bor [System.Reflection.MethodAttributes]::PinvokeImpl, [System.Reflection.CallingConventions]::Standard, [bool], [type[]]@([intptr], [char[]], [uint32], [uint32], [uint32].MakeByRefType()), [System.Runtime.InteropServices.CallingConvention]::Winapi, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\enlarge-and-capture.ps1",
+                     "Line":  35,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, $mb, $cc, [bool], [type[]]@([intptr], [System.Text.StringBuilder], [uint32], [uint32], [uint32].MakeByRefType()), $wc, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\enlarge-and-capture.ps1",
+                     "Line":  42,
+                     "Text":  "$readCharsM = $nativeT.GetMethod(\u0027ReadConsoleOutputCharacterW\u0027)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\enlarge-and-capture.ps1",
+                     "Line":  88,
+                     "Text":  "$ra.SetValue($h, 0); $ra.SetValue($line, 1); $ra.SetValue([uint32]$cols, 2); $ra.SetValue([uint32]$y, 3); $ra.SetValue([uint32]0, 4)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\read-console-rows.ps1",
+                     "Line":  29,
+                     "Text":  "$readChars = $nativeType.DefinePInvokeMethod(\u0027ReadConsoleOutputCharacterW\u0027, \u0027kernel32.dll\u0027, $mb, $cc, [bool], [type[]]@([intptr], [System.Text.StringBuilder], [uint32], [uint32], [uint32].MakeByRefType()), $wc, [System.Runtime.InteropServices.CharSet]::Unicode)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\read-console-rows.ps1",
+                     "Line":  35,
+                     "Text":  "$readCharsM = $nativeT.GetMethod(\u0027ReadConsoleOutputCharacterW\u0027)"
+                 },
+                 {
+                     "File":  "research\\tt-last-capture\\probes\\read-console-rows.ps1",
+                     "Line":  64,
+                     "Text":  "$ra.SetValue($h, 0); $ra.SetValue($line, 1); $ra.SetValue([uint32]$cols, 2); $ra.SetValue([uint32]$y, 3); $ra.SetValue([uint32]0, 4)"
+                 }
+             ]
+}

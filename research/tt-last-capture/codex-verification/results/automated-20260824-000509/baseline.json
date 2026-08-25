@@ -1,0 +1,25 @@
+﻿{
+    "Schema":  "tt-capture-verification/automated-baseline/v1",
+    "CapturedAtUtc":  "2026-08-23T16:05:09.4205330+00:00",
+    "Branch":  "research/tt-last-capture",
+    "Head":  "414ba31171931f1743dc721ed7bf9cd8b69a2df7",
+    "Log":  [
+                "414ba31 docs: amend constitution to v2.0.0 for outcome-based privacy governance",
+                "57ee680 BASELINE ACCEPTED WITH KNOWN LIMITATIONS",
+                "77c82de 架构重新设计前",
+                "85893af 存在些许bug",
+                "9e2775f fix: complete US2 terminal interaction acceptance"
+            ],
+    "Status":  [
+                   "?? research-write-test.txt",
+                   "?? research/"
+               ],
+    "PowerShell":  "\r\nName                           Value                                                                                   \r\n----                           -----                                                                                   \r\nPSVersion                      5.1.26100.9168                                                                          \r\nPSEdition                      Desktop                                                                                 \r\nPSCompatibleVersions           {1.0, 2.0, 3.0, 4.0...}                                                                 \r\nBuildVersion                   10.0.26100.9168                                                                         \r\nCLRVersion                     4.0.30319.42000                                                                         \r\nWSManStackVersion              3.0                                                                                     \r\nPSRemotingProtocolVersion      2.3                                                                                     \r\nSerializationVersion           1.1.0.1                                                                                 \r\n\r\n\r\n",
+    "HostName":  "ConsoleHost",
+    "WtSession":  "0dc6d39f-d8f9-4af7-81a6-c0fe46efa6ff",
+    "ExactCommands":  [
+                          "dotnet build \"D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\ConsoleBufferProbe\\ConsoleBufferProbe.csproj\" --configuration Release",
+                          "ConsoleBufferProbe.exe environment --output environment.json",
+                          "ConsoleBufferProbe.exe abi-test --output v0-abi-controlled.json"
+                      ]
+}

@@ -1,0 +1,96 @@
+{
+  "Schema": "tt-capture-verification/console-capture/v1",
+  "CapturedAtUtc": "2026-08-25T07:19:57.2826748+00:00",
+  "SessionId": "ec8f962397eb4affa95fb92a7a30ddcf",
+  "Console": {
+    "Buffer": {
+      "Width": 87,
+      "Height": 51
+    },
+    "Cursor": {
+      "X": 0,
+      "Y": 50
+    },
+    "Window": {
+      "Left": 0,
+      "Top": 0,
+      "Right": 86,
+      "Bottom": 50,
+      "Width": 87,
+      "Height": 51
+    },
+    "MaximumWindow": {
+      "Width": 87,
+      "Height": 51
+    },
+    "Attributes": 7
+  },
+  "Rows": [
+    "   ndException",
+    "    \u002B FullyQualifiedErrorId : DriveNotFound,Microsoft.PowerShell.Commands.GetChildIte",
+    "   mCommand",
+    "",
+    "On branch research/tt-last-capture",
+    "Untracked files:",
+    "  (use \u0022git add \u003Cfile\u003E...\u0022 to include in what will be committed)",
+    "        research-write-test.txt",
+    "        research/",
+    "",
+    "nothing added to commit but untracked files present (use \u0022git add\u0022 to track)",
+    "git: \u0027foo\u0027 is not a git command. See \u0027git --help\u0027.",
+    "",
+    "The most similar command is",
+    "        hook",
+    "Traceback (most recent call last):",
+    "  File \u0022\u003Cstring\u003E\u0022, line 1, in \u003Cmodule\u003E",
+    "    raise RuntimeError(TT_T_PYTHON_ERROR)",
+    "                       ^^^^^^^^^^^^^^^^^",
+    "NameError: name \u0027TT_T_PYTHON_ERROR\u0027 is not defined",
+    "10.0.400",
+    "TT_ORDER_1_STDOUT",
+    "TT_ORDER_2_STDERR",
+    "TT_ORDER_3_STDOUT",
+    "TT_UNICODE_\u4E2D\u6587_\u03A9_\uFFFD",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0002",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtBoth -Name v1-v4-core",
+    "CONSOLE_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verificat",
+    "ion\\results\\real-wt-20260825-150242-ec8f9623\\v1-v4-core-console.json",
+    "TRANSCRIPT_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verifi",
+    "cation\\results\\real-wt-20260825-150242-ec8f9623\\v1-v4-core-transcript.json",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0003",
+    "PS D:\\Projects\\Terminal Translator\u003E Write-Output \u0022CMD1_UNIQUE\u0022",
+    "CMD1_UNIQUE",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0004",
+    "PS D:\\Projects\\Terminal Translator\u003E Write-Output \u0022CMD2_UNIQUE\u0022",
+    "CMD2_UNIQUE",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0005",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtBoth -Name v3-simple",
+    "CONSOLE_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verificat",
+    "ion\\results\\real-wt-20260825-150242-ec8f9623\\v3-simple-console.json",
+    "TRANSCRIPT_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verifi",
+    "cation\\results\\real-wt-20260825-150242-ec8f9623\\v3-simple-transcript.json",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0006",
+    "PS D:\\Projects\\Terminal Translator\u003E Write-Output \u0022HAS_OUTPUT\u0022",
+    "HAS_OUTPUT",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0007",
+    "PS D:\\Projects\\Terminal Translator\u003E cd .",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0008",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtBoth -Name v3-empty",
+    ""
+  ],
+  "PreviousCompletedBoundary": {
+    "Found": true,
+    "Start": {
+      "Row": 46,
+      "Ordinal": 7
+    },
+    "End": {
+      "Row": 48,
+      "Ordinal": 8
+    },
+    "Rows": [
+      "PS D:\\Projects\\Terminal Translator\u003E cd ."
+    ],
+    "Text": "PS D:\\Projects\\Terminal Translator\u003E cd ."
+  }
+}

@@ -1,0 +1,44 @@
+{
+    "Schema":  "tt-capture-verification/transcript-read/v1",
+    "CapturedAtUtc":  "2026-08-25T07:21:06.8855977+00:00",
+    "SessionId":  "dfd6425790f44ff79bb2c7e374d29c36",
+    "TranscriptPath":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\transcript.txt",
+    "Measurements":  [
+                         {
+                             "DelayMs":  0,
+                             "FileLengthBytes":  6864,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  1,
+                                                     "EndOrdinal":  2,
+                                                     "BoundaryCount":  2,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eWrite-Output \"TT_SESSION_B_ONLY\"\r\nTT_SESSION_B_ONLY\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v3-session-b-transcript-0ms.txt"
+                         },
+                         {
+                             "DelayMs":  50,
+                             "FileLengthBytes":  6864,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  1,
+                                                     "EndOrdinal":  2,
+                                                     "BoundaryCount":  2,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eWrite-Output \"TT_SESSION_B_ONLY\"\r\nTT_SESSION_B_ONLY\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v3-session-b-transcript-50ms.txt"
+                         },
+                         {
+                             "DelayMs":  200,
+                             "FileLengthBytes":  6864,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  1,
+                                                     "EndOrdinal":  2,
+                                                     "BoundaryCount":  2,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eWrite-Output \"TT_SESSION_B_ONLY\"\r\nTT_SESSION_B_ONLY\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v3-session-b-transcript-200ms.txt"
+                         }
+                     ]
+}

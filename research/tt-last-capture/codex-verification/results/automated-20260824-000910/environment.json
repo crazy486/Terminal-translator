@@ -1,0 +1,120 @@
+{
+  "Schema": "tt-capture-verification/environment/v1",
+  "CapturedAtUtc": "2026-08-23T16:09:12.8795591+00:00",
+  "Os": {
+    "Description": "Microsoft Windows 10.0.26200",
+    "Architecture": "X64",
+    "Framework": ".NET 10.0.11",
+    "Version": "10.0.26200.0"
+  },
+  "Process": {
+    "Id": 12060,
+    "Name": "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\ConsoleBufferProbe\\bin\\Release\\net10.0\\TT.CaptureVerification.ConsoleBufferProbe.exe",
+    "Is64Bit": true,
+    "Chain": [
+      {
+        "ProcessId": 12060,
+        "ParentProcessId": 16084,
+        "Name": "TT.CaptureVerification.ConsoleBufferProbe.exe"
+      },
+      {
+        "ProcessId": 16084,
+        "ParentProcessId": 16252,
+        "Name": "powershell.exe"
+      },
+      {
+        "ProcessId": 16252,
+        "ParentProcessId": 9824,
+        "Name": "powershell.exe"
+      },
+      {
+        "ProcessId": 9824,
+        "ParentProcessId": 29680,
+        "Name": "codex-command-runner-0.149.0.exe"
+      },
+      {
+        "ProcessId": 29680,
+        "ParentProcessId": 8668,
+        "Name": "codex.exe"
+      },
+      {
+        "ProcessId": 8668,
+        "ParentProcessId": 8608,
+        "Name": "powershell.exe"
+      },
+      {
+        "ProcessId": 8608,
+        "ParentProcessId": 12072,
+        "Name": "WindowsTerminal.exe"
+      },
+      {
+        "ProcessId": 12072,
+        "ParentProcessId": 12032,
+        "Name": "explorer.exe"
+      },
+      {
+        "ProcessId": 12032,
+        "ParentProcessId": 0,
+        "Name": "\u003Cunavailable\u003E"
+      }
+    ]
+  },
+  "Terminal": {
+    "WtSession": "0dc6d39f-d8f9-4af7-81a6-c0fe46efa6ff",
+    "TermProgram": null,
+    "Term": "dumb"
+  },
+  "Handles": {
+    "Stdin": {
+      "Value": "0x234",
+      "TypeValue": 3,
+      "Type": "PIPE",
+      "LastError": 0
+    },
+    "Stdout": {
+      "Value": "0x240",
+      "TypeValue": 3,
+      "Type": "PIPE",
+      "LastError": 0
+    },
+    "Stderr": {
+      "Value": "0x248",
+      "TypeValue": 3,
+      "Type": "PIPE",
+      "LastError": 0
+    },
+    "StdoutConsoleInfo": {
+      "Success": false,
+      "LastError": 6,
+      "Info": null
+    },
+    "Conout": {
+      "Opened": true,
+      "InfoSuccess": true,
+      "LastError": 0,
+      "Info": {
+        "Buffer": {
+          "Width": 120,
+          "Height": 9001
+        },
+        "Cursor": {
+          "X": 0,
+          "Y": 0
+        },
+        "Window": {
+          "Left": 0,
+          "Top": 0,
+          "Right": 119,
+          "Bottom": 29,
+          "Width": 120,
+          "Height": 30
+        },
+        "MaximumWindow": {
+          "Width": 120,
+          "Height": 93
+        },
+        "Attributes": 7
+      }
+    }
+  }
+}

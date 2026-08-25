@@ -6,5 +6,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Fixtures\InteractiveProbe\**\*.cs" />
+    <None Update="Fixtures\PowerShellCaptureProbe\Invoke-CaptureProbe.ps1"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\TerminalTranslator.Windows\PowerShell\TerminalTranslator.Profile.ps1"
+          Link="TerminalTranslator.Profile.ps1"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

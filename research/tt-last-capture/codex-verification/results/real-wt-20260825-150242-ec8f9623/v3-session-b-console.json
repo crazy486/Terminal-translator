@@ -1,0 +1,97 @@
+{
+  "Schema": "tt-capture-verification/console-capture/v1",
+  "CapturedAtUtc": "2026-08-25T07:21:06.5980659+00:00",
+  "SessionId": "dfd6425790f44ff79bb2c7e374d29c36",
+  "Console": {
+    "Buffer": {
+      "Width": 87,
+      "Height": 51
+    },
+    "Cursor": {
+      "X": 0,
+      "Y": 50
+    },
+    "Window": {
+      "Left": 0,
+      "Top": 0,
+      "Right": 86,
+      "Bottom": 50,
+      "Width": 87,
+      "Height": 51
+    },
+    "MaximumWindow": {
+      "Width": 87,
+      "Height": 51
+    },
+    "Attributes": 7
+  },
+  "Rows": [
+    "TRANSCRIPT_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verifi",
+    "cation\\results\\real-wt-20260825-150242-ec8f9623\\v3-simple-transcript.json",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0006",
+    "PS D:\\Projects\\Terminal Translator\u003E Write-Output \u0022HAS_OUTPUT\u0022",
+    "HAS_OUTPUT",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0007",
+    "PS D:\\Projects\\Terminal Translator\u003E cd .",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0008",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtBoth -Name v3-empty",
+    "CONSOLE_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verificat",
+    "ion\\results\\real-wt-20260825-150242-ec8f9623\\v3-empty-console.json",
+    "TRANSCRIPT_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verifi",
+    "cation\\results\\real-wt-20260825-150242-ec8f9623\\v3-empty-transcript.json",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0009",
+    "PS D:\\Projects\\Terminal Translator\u003E Write-Output @(",
+    "\u003E\u003E   \u0022TT_CONTINUATION_A\u0022",
+    "\u003E\u003E   \u0022TT_CONTINUATION_B\u0022",
+    "\u003E\u003E )",
+    "TT_CONTINUATION_A",
+    "TT_CONTINUATION_B",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0010",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtBoth -Name v3-continuation",
+    "CONSOLE_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verificat",
+    "ion\\results\\real-wt-20260825-150242-ec8f9623\\v3-continuation-console.json",
+    "TRANSCRIPT_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verifi",
+    "cation\\results\\real-wt-20260825-150242-ec8f9623\\v3-continuation-transcript.json",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0011",
+    "PS D:\\Projects\\Terminal Translator\u003E Set-TtVerificationCustomPrompt",
+    "PROMPT_STYLE=custom",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0012",
+    "CUSTOM\u003E Write-Output \u0022TT_CUSTOM_PROMPT_OUTPUT\u0022",
+    "TT_CUSTOM_PROMPT_OUTPUT",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0013",
+    "CUSTOM\u003E Capture-TtBoth -Name v3-custom-prompt",
+    "CONSOLE_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verificat",
+    "ion\\results\\real-wt-20260825-150242-ec8f9623\\v3-custom-prompt-console.json",
+    "TRANSCRIPT_RESULT=D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verifi",
+    "cation\\results\\real-wt-20260825-150242-ec8f9623\\v3-custom-prompt-transcript.json",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0014",
+    "CUSTOM\u003E Set-TtVerificationDefaultPrompt",
+    "PROMPT_STYLE=default",
+    "TT_BOUNDARY:ec8f962397eb4affa95fb92a7a30ddcf:0015",
+    "PS D:\\Projects\\Terminal Translator\u003E Switch-TtVerificationSession",
+    "OLD_SESSION=ec8f962397eb4affa95fb92a7a30ddcf",
+    "NEW_SESSION=dfd6425790f44ff79bb2c7e374d29c36",
+    "TT_BOUNDARY:dfd6425790f44ff79bb2c7e374d29c36:0001",
+    "PS D:\\Projects\\Terminal Translator\u003E Write-Output \u0022TT_SESSION_B_ONLY\u0022",
+    "TT_SESSION_B_ONLY",
+    "TT_BOUNDARY:dfd6425790f44ff79bb2c7e374d29c36:0002",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtBoth -Name v3-session-b",
+    ""
+  ],
+  "PreviousCompletedBoundary": {
+    "Found": true,
+    "Start": {
+      "Row": 45,
+      "Ordinal": 1
+    },
+    "End": {
+      "Row": 48,
+      "Ordinal": 2
+    },
+    "Rows": [
+      "PS D:\\Projects\\Terminal Translator\u003E Write-Output \u0022TT_SESSION_B_ONLY\u0022",
+      "TT_SESSION_B_ONLY"
+    ],
+    "Text": "PS D:\\Projects\\Terminal Translator\u003E Write-Output \u0022TT_SESSION_B_ONLY\u0022\r\nTT_SESSION_B_ONLY"
+  }
+}

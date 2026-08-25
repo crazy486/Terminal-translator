@@ -1,0 +1,6 @@
+TT_CAPTURE_SESSION_ID=ec8f962397eb4affa95fb92a7a30ddcf
+TT_CAPTURE_RESULTS=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623
+TT_CAPTURE_TRANSCRIPT=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\transcript.txt
+TT_CAPTURE_METADATA=D:\Projects\Terminal Translator\research\tt-last-capture\codex-verification\results\real-wt-20260825-150242-ec8f9623\metadata-ec8f962397eb4affa95fb92a7a30ddcf.jsonl
+START_BOUNDARY=NOT_PROVEN
+END_BOUNDARY=prompt sentinel + sidecar metadata

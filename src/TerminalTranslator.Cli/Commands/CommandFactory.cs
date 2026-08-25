@@ -16,14 +16,22 @@ public static class CommandFactory
         return await parseResult.InvokeAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
-    public static RootCommand CreateRootCommand()
+    public static RootCommand CreateRootCommand(OnDemandAssistanceRuntimeComposition? onDemand = null)
     {
+        onDemand ??= OnDemandAssistanceRuntimeComposition.CreateProduction();
         RootCommand root = new("Translate useful Windows terminal output in a companion pane.");
         root.Add(ConfigureCommand.Create());
         root.Add(StartCommand.Create());
         root.Add(OnCommand.Create());
         root.Add(OffCommand.Create());
         root.Add(StatusCommand.Create());
+
+        root.Add(LastCommand.Create(onDemand.ExecuteLastAsync));
+        root.Add(AskCommand.Create(
+            onDemand.ExecuteQuestionAsync,
+            contextualExecutorFactory: () => onDemand.ExecuteLastQuestionAsync));
+
+        root.Add(CaptureIntegrationCommand.Create());
 
         root.Add(HostCommand.Create());
         root.Add(CompanionCommand.Create());

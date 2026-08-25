@@ -1,0 +1,44 @@
+{
+    "Schema":  "tt-capture-verification/transcript-read/v1",
+    "CapturedAtUtc":  "2026-08-25T07:22:26.5895937+00:00",
+    "SessionId":  "dfd6425790f44ff79bb2c7e374d29c36",
+    "TranscriptPath":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\transcript.txt",
+    "Measurements":  [
+                         {
+                             "DelayMs":  0,
+                             "FileLengthBytes":  37849,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  9,
+                                                     "EndOrdinal":  10,
+                                                     "BoundaryCount":  10,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eClear-Host\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v4-after-clear-transcript-0ms.txt"
+                         },
+                         {
+                             "DelayMs":  50,
+                             "FileLengthBytes":  37849,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  9,
+                                                     "EndOrdinal":  10,
+                                                     "BoundaryCount":  10,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eClear-Host\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v4-after-clear-transcript-50ms.txt"
+                         },
+                         {
+                             "DelayMs":  200,
+                             "FileLengthBytes":  37849,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  9,
+                                                     "EndOrdinal":  10,
+                                                     "BoundaryCount":  10,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eClear-Host\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v4-after-clear-transcript-200ms.txt"
+                         }
+                     ]
+}

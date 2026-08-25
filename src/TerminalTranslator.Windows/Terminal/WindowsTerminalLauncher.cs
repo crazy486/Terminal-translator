@@ -58,6 +58,9 @@ public sealed class WindowsTerminalLauncher
 
         startInfo.Environment["TT_SESSION_ID"] = sessionId;
         startInfo.Environment["TT_SESSION_NONCE"] = nonce;
+        // The hosted ConPTY PowerShell inherits this explicit guard through the host process.
+        // The Feature 002 profile loader checks it before installing a second prompt/transcript.
+        startInfo.Environment["TT_HOSTED_SESSION_ID"] = sessionId;
         string? executableDirectory = Path.GetDirectoryName(Path.GetFullPath(executablePath));
         if (!string.IsNullOrWhiteSpace(executableDirectory))
         {

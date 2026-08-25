@@ -18,7 +18,13 @@ internal sealed record ChatCompletionChoiceDto(ChatCompletionResponseMessageDto?
 
 internal sealed record ChatCompletionResponseMessageDto(string? Content);
 
+internal sealed record AssistanceResponseDto(string? Translation, string? Recommendation);
+
+internal sealed record AssistanceAnswerResponseDto(string? Answer);
+
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
 [JsonSerializable(typeof(ChatCompletionRequestDto))]
 [JsonSerializable(typeof(ChatCompletionResponseDto))]
+[JsonSerializable(typeof(AssistanceResponseDto))]
+[JsonSerializable(typeof(AssistanceAnswerResponseDto))]
 internal partial class ProviderJsonContext : JsonSerializerContext;

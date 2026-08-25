@@ -1,0 +1,92 @@
+{
+  "Schema": "tt-capture-verification/console-capture/v1",
+  "CapturedAtUtc": "2026-08-25T07:22:00.2515511+00:00",
+  "SessionId": "dfd6425790f44ff79bb2c7e374d29c36",
+  "Console": {
+    "Buffer": {
+      "Width": 87,
+      "Height": 51
+    },
+    "Cursor": {
+      "X": 0,
+      "Y": 50
+    },
+    "Window": {
+      "Left": 0,
+      "Top": 0,
+      "Right": 86,
+      "Bottom": 50,
+      "Width": 87,
+      "Height": 51
+    },
+    "MaximumWindow": {
+      "Width": 87,
+      "Height": 51
+    },
+    "Attributes": 7
+  },
+  "Rows": [
+    "TT_LINE_0953",
+    "TT_LINE_0954",
+    "TT_LINE_0955",
+    "TT_LINE_0956",
+    "TT_LINE_0957",
+    "TT_LINE_0958",
+    "TT_LINE_0959",
+    "TT_LINE_0960",
+    "TT_LINE_0961",
+    "TT_LINE_0962",
+    "TT_LINE_0963",
+    "TT_LINE_0964",
+    "TT_LINE_0965",
+    "TT_LINE_0966",
+    "TT_LINE_0967",
+    "TT_LINE_0968",
+    "TT_LINE_0969",
+    "TT_LINE_0970",
+    "TT_LINE_0971",
+    "TT_LINE_0972",
+    "TT_LINE_0973",
+    "TT_LINE_0974",
+    "TT_LINE_0975",
+    "TT_LINE_0976",
+    "TT_LINE_0977",
+    "TT_LINE_0978",
+    "TT_LINE_0979",
+    "TT_LINE_0980",
+    "TT_LINE_0981",
+    "TT_LINE_0982",
+    "TT_LINE_0983",
+    "TT_LINE_0984",
+    "TT_LINE_0985",
+    "TT_LINE_0986",
+    "TT_LINE_0987",
+    "TT_LINE_0988",
+    "TT_LINE_0989",
+    "TT_LINE_0990",
+    "TT_LINE_0991",
+    "TT_LINE_0992",
+    "TT_LINE_0993",
+    "TT_LINE_0994",
+    "TT_LINE_0995",
+    "TT_LINE_0996",
+    "TT_LINE_0997",
+    "TT_LINE_0998",
+    "TT_LINE_0999",
+    "TT_LINE_1000",
+    "TT_BOUNDARY:dfd6425790f44ff79bb2c7e374d29c36:0004",
+    "PS D:\\Projects\\Terminal Translator\u003E Capture-TtBoth -Name v2-default",
+    ""
+  ],
+  "PreviousCompletedBoundary": {
+    "Found": false,
+    "Reason": "Fewer than two completed prompt sentinels were retained.",
+    "Boundaries": [
+      {
+        "Row": 48,
+        "Ordinal": 4,
+        "Text": "TT_BOUNDARY:dfd6425790f44ff79bb2c7e374d29c36:0004"
+      }
+    ]
+  }
+}

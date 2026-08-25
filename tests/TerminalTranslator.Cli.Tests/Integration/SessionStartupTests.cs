@@ -22,6 +22,7 @@ public sealed class SessionStartupTests
 
         Assert.AreEqual(sessionId, startInfo.Environment["TT_SESSION_ID"]);
         Assert.AreEqual(nonce, startInfo.Environment["TT_SESSION_NONCE"]);
+        Assert.AreEqual(sessionId, startInfo.Environment["TT_HOSTED_SESSION_ID"]);
         CollectionAssert.AreEqual(
             new[] { sessionId, sessionId },
             arguments

@@ -1,0 +1,143 @@
+{
+  "Schema": "tt-capture-verification/abi-test/v1",
+  "CapturedAtUtc": "2026-08-23T16:07:08.9685802+00:00",
+  "CoordLayout": {
+    "Size": 4,
+    "XOffset": 0,
+    "YOffset": 2
+  },
+  "CorrectSignature": "ReadConsoleOutputCharacterW(nint, char[], uint, COORD, out uint)",
+  "LegacySignature": "ReadConsoleOutputCharacterW(nint, char[], uint, uint, out uint)",
+  "Buffer": {
+    "Initial": {
+      "Buffer": {
+        "Width": 120,
+        "Height": 30
+      },
+      "Cursor": {
+        "X": 0,
+        "Y": 0
+      },
+      "Window": {
+        "Left": 0,
+        "Top": 0,
+        "Right": 119,
+        "Bottom": 29,
+        "Width": 120,
+        "Height": 30
+      },
+      "MaximumWindow": {
+        "Width": 120,
+        "Height": 30
+      },
+      "Attributes": 7
+    },
+    "Requested": {
+      "Width": 120,
+      "Height": 30
+    },
+    "SetSucceeded": false,
+    "SetLastError": 87,
+    "Actual": {
+      "Buffer": {
+        "Width": 120,
+        "Height": 30
+      },
+      "Cursor": {
+        "X": 0,
+        "Y": 0
+      },
+      "Window": {
+        "Left": 0,
+        "Top": 0,
+        "Right": 119,
+        "Bottom": 29,
+        "Width": 120,
+        "Height": 30
+      },
+      "MaximumWindow": {
+        "Width": 120,
+        "Height": 30
+      },
+      "Attributes": 7
+    }
+  },
+  "Comparisons": [
+    {
+      "Requested": {
+        "X": 0,
+        "Y": 0
+      },
+      "Correct": {
+        "Text": "ROW000_UNIQUE       ",
+        "MatchesExpected": true
+      },
+      "LegacyArgument": {
+        "UInt32": 0,
+        "DecodedX": 0,
+        "DecodedY": 0
+      },
+      "Legacy": {
+        "Text": "ROW000_UNIQUE       ",
+        "MatchesExpected": true
+      }
+    },
+    {
+      "Requested": {
+        "X": 0,
+        "Y": 1
+      },
+      "Correct": {
+        "Text": "ROW001_UNIQUE       ",
+        "MatchesExpected": true
+      },
+      "LegacyArgument": {
+        "UInt32": 1,
+        "DecodedX": 1,
+        "DecodedY": 0
+      },
+      "Legacy": {
+        "Text": "OW000_UNIQUE        ",
+        "MatchesExpected": false
+      }
+    },
+    {
+      "Requested": {
+        "X": 0,
+        "Y": 2
+      },
+      "Correct": {
+        "Text": "ROW002_UNIQUE       ",
+        "MatchesExpected": true
+      },
+      "LegacyArgument": {
+        "UInt32": 2,
+        "DecodedX": 2,
+        "DecodedY": 0
+      },
+      "Legacy": {
+        "Text": "W000_UNIQUE         ",
+        "MatchesExpected": false
+      }
+    },
+    {
+      "Requested": {
+        "X": 0,
+        "Y": 20
+      },
+      "Correct": {
+        "Text": "ROW020_UNIQUE       ",
+        "MatchesExpected": true
+      },
+      "LegacyArgument": {
+        "UInt32": 20,
+        "DecodedX": 20,
+        "DecodedY": 0
+      },
+      "Legacy": {
+        "Text": "                    ",
+        "MatchesExpected": false
+      }
+    }
+  ]
+}

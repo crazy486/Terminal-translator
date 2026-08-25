@@ -1,0 +1,44 @@
+{
+    "Schema":  "tt-capture-verification/transcript-read/v1",
+    "CapturedAtUtc":  "2026-08-25T07:20:09.8286933+00:00",
+    "SessionId":  "ec8f962397eb4affa95fb92a7a30ddcf",
+    "TranscriptPath":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\transcript.txt",
+    "Measurements":  [
+                         {
+                             "DelayMs":  0,
+                             "FileLengthBytes":  5226,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  9,
+                                                     "EndOrdinal":  10,
+                                                     "BoundaryCount":  10,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eWrite-Output @(\n  \"TT_CONTINUATION_A\"\n  \"TT_CONTINUATION_B\"\n)\r\nTT_CONTINUATION_A\r\nTT_CONTINUATION_B\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v3-continuation-transcript-0ms.txt"
+                         },
+                         {
+                             "DelayMs":  50,
+                             "FileLengthBytes":  5226,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  9,
+                                                     "EndOrdinal":  10,
+                                                     "BoundaryCount":  10,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eWrite-Output @(\n  \"TT_CONTINUATION_A\"\n  \"TT_CONTINUATION_B\"\n)\r\nTT_CONTINUATION_A\r\nTT_CONTINUATION_B\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v3-continuation-transcript-50ms.txt"
+                         },
+                         {
+                             "DelayMs":  200,
+                             "FileLengthBytes":  5226,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  9,
+                                                     "EndOrdinal":  10,
+                                                     "BoundaryCount":  10,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eWrite-Output @(\n  \"TT_CONTINUATION_A\"\n  \"TT_CONTINUATION_B\"\n)\r\nTT_CONTINUATION_A\r\nTT_CONTINUATION_B\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v3-continuation-transcript-200ms.txt"
+                         }
+                     ]
+}

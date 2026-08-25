@@ -1,0 +1,12 @@
+﻿{
+    "Schema":  "tt-capture-verification/probe-manifest/v1",
+    "CapturedAtUtc":  "2026-08-23T16:09:13.1997662+00:00",
+    "ProbePath":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\ConsoleBufferProbe\\bin\\Release\\net10.0\\TT.CaptureVerification.ConsoleBufferProbe.exe",
+    "ProbeExeSha256":  "1C7033F0520BC8BEDB9FACB99B11FFED7B267CC96C92099574A67DDC989FF55A",
+    "ProbeDllSha256":  "4F02A43A18208052F3707992EFC873CFD2312C102C4366B72CE0DD27D0C12E16",
+    "ExitCodes":  {
+                      "Build":  0,
+                      "Environment":  0,
+                      "AbiTest":  0
+                  }
+}

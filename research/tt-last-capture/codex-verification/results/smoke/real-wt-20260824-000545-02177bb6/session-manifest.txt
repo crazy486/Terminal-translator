@@ -1,0 +1,6 @@
+TT_CAPTURE_SESSION_ID=02177bb61ec44e9c9f09c381367f7513
+TT_CAPTURE_RESULTS=research\tt-last-capture\codex-verification\results\smoke\real-wt-20260824-000545-02177bb6
+TT_CAPTURE_TRANSCRIPT=research\tt-last-capture\codex-verification\results\smoke\real-wt-20260824-000545-02177bb6\transcript.txt
+TT_CAPTURE_METADATA=research\tt-last-capture\codex-verification\results\smoke\real-wt-20260824-000545-02177bb6\metadata-02177bb61ec44e9c9f09c381367f7513.jsonl
+START_BOUNDARY=NOT_PROVEN
+END_BOUNDARY=prompt sentinel + sidecar metadata

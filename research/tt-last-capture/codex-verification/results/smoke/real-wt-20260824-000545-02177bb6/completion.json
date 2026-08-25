@@ -1,0 +1,9 @@
+{
+    "Schema":  "tt-capture-verification/manual-completion/v1",
+    "CompletedAtUtc":  "2026-08-23T16:05:49.7309698+00:00",
+    "FinalSessionId":  "02177bb61ec44e9c9f09c381367f7513",
+    "FinalGitStatus":  [
+                           "?? research-write-test.txt",
+                           "?? research/"
+                       ]
+}

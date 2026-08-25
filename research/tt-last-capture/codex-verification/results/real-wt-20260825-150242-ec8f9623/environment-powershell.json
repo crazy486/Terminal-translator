@@ -1,0 +1,24 @@
+{
+    "Schema":  "tt-capture-verification/manual-powershell-environment/v1",
+    "CapturedAtUtc":  "2026-08-25T07:02:43.6757295+00:00",
+    "PSVersionTable":  "\r\nName                           Value                                                  \r\n----                           -----                                                  \r\nPSVersion                      5.1.26100.9168                                         \r\nPSEdition                      Desktop                                                \r\nPSCompatibleVersions           {1.0, 2.0, 3.0, 4.0...}                                \r\nBuildVersion                   10.0.26100.9168                                        \r\nCLRVersion                     4.0.30319.42000                                        \r\nWSManStackVersion              3.0                                                    \r\nPSRemotingProtocolVersion      2.3                                                    \r\nSerializationVersion           1.1.0.1                                                \r\n\r\n\r\n",
+    "HostName":  "ConsoleHost",
+    "WtSession":  "7b15d5ad-3267-451f-ab9d-0b5168f2a34d",
+    "ProcessId":  21264,
+    "ProcessName":  "powershell",
+    "CurrentDirectory":  "D:\\Projects\\Terminal Translator",
+    "ProbeExeSha256":  "1C7033F0520BC8BEDB9FACB99B11FFED7B267CC96C92099574A67DDC989FF55A",
+    "ProbeDllSha256":  "4F02A43A18208052F3707992EFC873CFD2312C102C4366B72CE0DD27D0C12E16",
+    "GitBranch":  "research/tt-last-capture",
+    "GitHead":  "414ba31171931f1743dc721ed7bf9cd8b69a2df7",
+    "InitialGitStatus":  [
+                             "?? research-write-test.txt",
+                             "?? research/"
+                         ],
+    "WindowsTerminal":  {
+                            "ProcessId":  4196,
+                            "Path":  "C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_1.24.11911.0_x64__8wekyb3d8bbwe\\WindowsTerminal.exe",
+                            "FileVersion":  "1.24.2607.10001",
+                            "ProductVersion":  "1.24.260710001"
+                        }
+}

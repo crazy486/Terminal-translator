@@ -1,0 +1,122 @@
+{
+  "Schema": "tt-capture-verification/environment/v1",
+  "CapturedAtUtc": "2026-08-25T07:02:43.5863238+00:00",
+  "Os": {
+    "Description": "Microsoft Windows 10.0.26200",
+    "Architecture": "X64",
+    "Framework": ".NET 10.0.11",
+    "Version": "10.0.26200.0"
+  },
+  "Process": {
+    "Id": 544,
+    "Name": "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\ConsoleBufferProbe\\bin\\Release\\net10.0\\TT.CaptureVerification.ConsoleBufferProbe.exe",
+    "Is64Bit": true,
+    "Chain": [
+      {
+        "ProcessId": 544,
+        "ParentProcessId": 21264,
+        "Name": "TT.CaptureVerification.ConsoleBufferProbe.exe"
+      },
+      {
+        "ProcessId": 21264,
+        "ParentProcessId": 4196,
+        "Name": "powershell.exe"
+      },
+      {
+        "ProcessId": 4196,
+        "ParentProcessId": 12256,
+        "Name": "WindowsTerminal.exe"
+      },
+      {
+        "ProcessId": 12256,
+        "ParentProcessId": 12216,
+        "Name": "explorer.exe"
+      },
+      {
+        "ProcessId": 12216,
+        "ParentProcessId": 0,
+        "Name": "\u003Cunavailable\u003E"
+      }
+    ]
+  },
+  "Terminal": {
+    "WtSession": "7b15d5ad-3267-451f-ab9d-0b5168f2a34d",
+    "TermProgram": null,
+    "Term": null
+  },
+  "Handles": {
+    "Stdin": {
+      "Value": "0x64",
+      "TypeValue": 2,
+      "Type": "CHAR",
+      "LastError": 0
+    },
+    "Stdout": {
+      "Value": "0x6c",
+      "TypeValue": 2,
+      "Type": "CHAR",
+      "LastError": 0
+    },
+    "Stderr": {
+      "Value": "0x70",
+      "TypeValue": 2,
+      "Type": "CHAR",
+      "LastError": 0
+    },
+    "StdoutConsoleInfo": {
+      "Success": true,
+      "LastError": 0,
+      "Info": {
+        "Buffer": {
+          "Width": 87,
+          "Height": 51
+        },
+        "Cursor": {
+          "X": 0,
+          "Y": 6
+        },
+        "Window": {
+          "Left": 0,
+          "Top": 0,
+          "Right": 86,
+          "Bottom": 50,
+          "Width": 87,
+          "Height": 51
+        },
+        "MaximumWindow": {
+          "Width": 87,
+          "Height": 51
+        },
+        "Attributes": 7
+      }
+    },
+    "Conout": {
+      "Opened": true,
+      "InfoSuccess": true,
+      "LastError": 0,
+      "Info": {
+        "Buffer": {
+          "Width": 87,
+          "Height": 51
+        },
+        "Cursor": {
+          "X": 0,
+          "Y": 6
+        },
+        "Window": {
+          "Left": 0,
+          "Top": 0,
+          "Right": 86,
+          "Bottom": 50,
+          "Width": 87,
+          "Height": 51
+        },
+        "MaximumWindow": {
+          "Width": 87,
+          "Height": 51
+        },
+        "Attributes": 7
+      }
+    }
+  }
+}

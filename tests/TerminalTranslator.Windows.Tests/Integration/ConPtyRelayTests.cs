@@ -10,6 +10,26 @@ namespace TerminalTranslator.Windows.Tests.Integration;
 public sealed class ConPtyRelayTests
 {
     [TestMethod]
+    public async Task Feature001PowerShell_ReceivesExplicitHostedCaptureExclusionGuard()
+    {
+        await using ConPtySession session = ConPtySession.StartPowerShell(Environment.CurrentDirectory);
+        await using MemoryStream programOutput = new();
+        Task outputTask = new ConsoleOutputRelay(session.Output, programOutput).CopyAsync(CancellationToken.None);
+        await session.Input.WriteAsync(Encoding.UTF8.GetBytes(
+            "Write-Output ('HOSTED-GUARD=' + $env:TT_HOSTED_SESSION_ID); exit 0\r\n"));
+        await session.Input.FlushAsync();
+
+        Assert.AreEqual(0, await session.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        await session.CompleteInputAsync();
+        session.ClosePseudoConsole();
+        await outputTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        string output = Encoding.UTF8.GetString(programOutput.ToArray());
+        StringAssert.Contains(output, "HOSTED-GUARD=");
+        Assert.IsFalse(output.Contains("HOSTED-GUARD=\r", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task WindowsPowerShell51_DefaultConPty_RoundTripsUtf8InputAndOutput()
     {
         await using ConPtySession session = ConPtySession.StartPowerShell(Environment.CurrentDirectory);

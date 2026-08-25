@@ -1,0 +1,44 @@
+{
+    "Schema":  "tt-capture-verification/transcript-read/v1",
+    "CapturedAtUtc":  "2026-08-25T07:10:37.7948864+00:00",
+    "SessionId":  "ec8f962397eb4affa95fb92a7a30ddcf",
+    "TranscriptPath":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\transcript.txt",
+    "Measurements":  [
+                         {
+                             "DelayMs":  0,
+                             "FileLengthBytes":  3912,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  4,
+                                                     "EndOrdinal":  5,
+                                                     "BoundaryCount":  5,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eWrite-Output \"CMD2_UNIQUE\"\r\nCMD2_UNIQUE\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v3-simple-transcript-0ms.txt"
+                         },
+                         {
+                             "DelayMs":  50,
+                             "FileLengthBytes":  3912,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  4,
+                                                     "EndOrdinal":  5,
+                                                     "BoundaryCount":  5,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eWrite-Output \"CMD2_UNIQUE\"\r\nCMD2_UNIQUE\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v3-simple-transcript-50ms.txt"
+                         },
+                         {
+                             "DelayMs":  200,
+                             "FileLengthBytes":  3912,
+                             "PreviousSegment":  {
+                                                     "Found":  true,
+                                                     "StartOrdinal":  4,
+                                                     "EndOrdinal":  5,
+                                                     "BoundaryCount":  5,
+                                                     "Text":  "\r\nPS D:\\Projects\\Terminal Translator\u003e\r\nPS\u003eWrite-Output \"CMD2_UNIQUE\"\r\nCMD2_UNIQUE\r\n"
+                                                 },
+                             "RawSnapshot":  "D:\\Projects\\Terminal Translator\\research\\tt-last-capture\\codex-verification\\results\\real-wt-20260825-150242-ec8f9623\\v3-simple-transcript-200ms.txt"
+                         }
+                     ]
+}

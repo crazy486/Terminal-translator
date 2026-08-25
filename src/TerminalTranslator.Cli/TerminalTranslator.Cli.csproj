@@ -13,4 +13,7 @@
     <ProjectReference Include="..\TerminalTranslator.Windows\TerminalTranslator.Windows.csproj" />
     <PackageReference Include="System.CommandLine" Version="2.0.11" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TerminalTranslator.Cli.Tests" />
+  </ItemGroup>
 </Project>
