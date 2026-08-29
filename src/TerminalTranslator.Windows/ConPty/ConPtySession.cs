@@ -35,6 +35,36 @@ public sealed class ConPtySession : IAsyncDisposable
     public int ExitCode => _process.ExitCode;
 
     public static ConPtySession StartPowerShell(string workingDirectory, Coord? size = null)
+        => StartHostedPowerShell("-NoLogo", workingDirectory, size);
+
+    public static ConPtySession StartPowerShellWithProfile(
+        string workingDirectory,
+        string profilePath,
+        string? startupCommand = null,
+        Coord? size = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profilePath);
+        string fullProfilePath = Path.GetFullPath(profilePath);
+        if (!File.Exists(fullProfilePath))
+        {
+            throw new FileNotFoundException("The controlled PowerShell profile does not exist.", fullProfilePath);
+        }
+
+        string escapedProfilePath = fullProfilePath.Replace("'", "''", StringComparison.Ordinal);
+        string command = $". '{escapedProfilePath}'";
+        if (!string.IsNullOrWhiteSpace(startupCommand))
+        {
+            command += $"; {startupCommand}";
+        }
+
+        string arguments = $"-NoLogo -NoExit -NoProfile -Command \"{command.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
+        return StartHostedPowerShell(arguments, workingDirectory, size);
+    }
+
+    private static ConPtySession StartHostedPowerShell(
+        string arguments,
+        string workingDirectory,
+        Coord? size)
     {
         lock (HostedEnvironmentGate)
         {
@@ -44,7 +74,7 @@ public sealed class ConPtySession : IAsyncDisposable
                 Environment.SetEnvironmentVariable(
                     "TT_HOSTED_SESSION_ID",
                     Environment.GetEnvironmentVariable("TT_SESSION_ID") ?? "feature-001-hosted");
-                return Start("powershell.exe", "-NoLogo", workingDirectory, size);
+                return Start("powershell.exe", arguments, workingDirectory, size);
             }
             finally
             {

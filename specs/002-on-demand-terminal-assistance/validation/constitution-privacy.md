@@ -97,3 +97,13 @@ metadata overflow all fail closed.
 
 Gate C passes. Gate E, Gate F, T126, and real Windows Terminal acceptance remain intentionally
 unexecuted.
+
+## 2026-08-27 bootstrap remediation applicability
+
+**Targeted re-audit:** PASS for the new binary. The remediation changes loader executable
+resolution, fresh-session environment initialization, and content-free bootstrap failure
+classification only. Diagnostic output is restricted to fixed categories such as
+`LoaderBridgeFailed`, `OwnerValidationFailed`, `TranscriptStartFailed`, and
+`MetadataWriteFailed`; it does not render exception messages, command text, transcript content,
+nonce, credentials, secrets, or captured output. Provider composition, consent, exact secret-gate
+placement, retention bounds, and external disclosure paths are unchanged.

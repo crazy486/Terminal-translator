@@ -126,3 +126,11 @@ scripts, and suggested file actions remain untrusted display strings.
 **Gate F = PASS.** Every provider/model response reachable from `tt last`, `tt ask`, and
 `tt ask last` terminates at `TextWriter`/console output. No model-response data flow reaches process,
 PowerShell, shell dispatch, confirmation, filesystem mutation, or generated-script execution APIs.
+
+## 2026-08-27 bootstrap remediation applicability
+
+**Targeted re-audit:** PASS for the new binary. The assistance-reachable sink search still returned
+no execution or filesystem sink, and the existing focused display-only suites passed 19/19. The
+loader now starts only its install-time-bound executable with fixed internal maintenance arguments;
+that path consumes no provider/model response. No assistance coordinator, provider-result model, or
+renderer changed.

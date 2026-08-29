@@ -1,9 +1,15 @@
 # Terminal Translator managed PowerShell 5.1 capture integration.
 $script:TtCaptureIntegrationVersion = '2.0'
+$script:TtExecutablePath = '__TT_EXECUTABLE_PATH__'
 
 if ($env:TT_HOSTED_SESSION_ID) {
     return
 }
+
+# A shell started from another PowerShell process may inherit the dead parent's opaque capture
+# proof. Ordinary integrated shells always bootstrap a fresh identity for their own process.
+$env:TT_CAPTURE_SESSION_ID = $null
+$env:TT_CAPTURE_SESSION_NONCE = $null
 
 if (-not $script:TtOriginalPrompt) {
     $script:TtOriginalPrompt = (Get-Item Function:\prompt -ErrorAction Stop).ScriptBlock
@@ -15,12 +21,57 @@ $script:TtCaptureUnavailableNotified = $false
 $script:TtCaptureDisabled = $false
 $script:TtCaptureWatcherStarted = $false
 $script:TtCaptureExitSubscription = $null
+$script:TtCaptureFailureReason = $null
 
-function script:Set-TtCaptureUnavailable {
+function script:ConvertTo-TtCaptureFailureReason([string] $Reason) {
+    switch ($Reason) {
+        'storagecreation' { 'StorageCreationFailed' }
+        'sessionidentity' { 'SessionIdentityFailed' }
+        'ownervalidation' { 'OwnerValidationFailed' }
+        'transcriptstart' { 'TranscriptStartFailed' }
+        'transcriptstop' { 'TranscriptStopFailed' }
+        'metadatawrite' { 'MetadataWriteFailed' }
+        'metadata' { 'MetadataWriteFailed' }
+        'loaderbridge' { 'LoaderBridgeFailed' }
+        'boundary' { 'BoundaryValidationFailed' }
+        'snapshot' { 'SnapshotFailed' }
+        'retention' { 'RetentionFailed' }
+        'cleanup' { 'CleanupFailed' }
+        'storage' { 'StorageFailed' }
+        default { 'UnexpectedBootstrapFailure' }
+    }
+}
+
+function script:Set-TtCaptureUnavailable([string] $Reason = 'UnexpectedBootstrapFailure') {
     $script:TtCaptureActive = $false
+    $script:TtCaptureFailureReason = ConvertTo-TtCaptureFailureReason $Reason
     if (-not $script:TtCaptureUnavailableNotified) {
-        [Console]::Error.WriteLine('[tt] Capture unavailable. `tt last` will not work until capture recovers.')
+        [Console]::Error.WriteLine("[tt] Capture unavailable ($($script:TtCaptureFailureReason)). ``tt last`` will not work until capture recovers.")
         $script:TtCaptureUnavailableNotified = $true
+    }
+}
+
+function script:Invoke-TtCaptureBridge([object[]] $Arguments) {
+    try {
+        if ([string]::IsNullOrWhiteSpace($script:TtExecutablePath) -or
+            -not (Test-Path -LiteralPath $script:TtExecutablePath -PathType Leaf)) {
+            Set-TtCaptureUnavailable 'loaderbridge'
+            return @()
+        }
+
+        $previousNativeExitCode = $global:LASTEXITCODE
+        $global:LASTEXITCODE = 0
+        $result = @(& $script:TtExecutablePath @Arguments 2>$null)
+        $bridgeExitCode = $global:LASTEXITCODE
+        $global:LASTEXITCODE = $previousNativeExitCode
+        if ($bridgeExitCode -ne 0 -and -not ($result | Where-Object { $_ -like 'unavailable=*' })) {
+            Set-TtCaptureUnavailable 'loaderbridge'
+        }
+        return $result
+    }
+    catch {
+        Set-TtCaptureUnavailable 'loaderbridge'
+        return @()
     }
 }
 
@@ -37,13 +88,14 @@ function script:Start-TtCaptureTranscript([string] $Path) {
             $script:TtCaptureActive = $false
             [Console]::Error.WriteLine('[tt] Capture restored.')
             $script:TtCaptureUnavailableNotified = $false
+            $script:TtCaptureFailureReason = $null
             $null = Start-Transcript -LiteralPath $Path -Force -ErrorAction Stop
             $script:TtCaptureActive = $true
         }
         return $true
     }
     catch {
-        Set-TtCaptureUnavailable
+        Set-TtCaptureUnavailable 'transcriptstart'
         return $false
     }
 }
@@ -61,11 +113,16 @@ function script:Disable-TtCaptureForLoadedSession {
 }
 
 function script:Register-TtCaptureCleanup {
+    # Production integration is installed by tt.exe. Non-executable bridge paths are used only by
+    # isolated loader tests and must not be handed to Start-Process via a file association.
+    if ([IO.Path]::GetExtension($script:TtExecutablePath) -ine '.exe') {
+        return
+    }
+
     if ($null -eq $script:TtCaptureExitSubscription) {
-        $script:TtCaptureExitSubscription = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
+        $script:TtCaptureExitSubscription = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -MessageData $script:TtExecutablePath -Action {
             try {
-                $ttExecutable = (Get-Command tt -ErrorAction Stop).Source
-                $null = Start-Process -FilePath $ttExecutable -ArgumentList @('__capture', 'cleanup') -WindowStyle Hidden
+                $null = Start-Process -FilePath $event.MessageData -ArgumentList @('__capture', 'cleanup') -WindowStyle Hidden
             }
             catch { }
         }
@@ -73,8 +130,7 @@ function script:Register-TtCaptureCleanup {
 
     if (-not $script:TtCaptureWatcherStarted) {
         try {
-            $ttExecutable = (Get-Command tt -ErrorAction Stop).Source
-            $null = Start-Process -FilePath $ttExecutable -ArgumentList @('__capture', 'watch') -WindowStyle Hidden
+            $null = Start-Process -FilePath $script:TtExecutablePath -ArgumentList @('__capture', 'watch') -WindowStyle Hidden
             $script:TtCaptureWatcherStarted = $true
         }
         catch { }
@@ -93,7 +149,7 @@ function script:Initialize-TtCapture {
             "owner-sid=$ownerSid",
             "version=$($script:TtCaptureIntegrationVersion)"
         )
-        $result = @(& tt @arguments 2>$null)
+        $result = @(Invoke-TtCaptureBridge $arguments)
         $session = $result | Where-Object { $_ -like 'session=*' } | Select-Object -Last 1
         $nonce = $result | Where-Object { $_ -like 'nonce=*' } | Select-Object -Last 1
         $staging = $result | Where-Object { $_ -like 'staging=*' } | Select-Object -Last 1
@@ -107,16 +163,17 @@ function script:Initialize-TtCapture {
             $env:TT_CAPTURE_SESSION_ID = $session.Substring(8)
             $env:TT_CAPTURE_SESSION_NONCE = $nonce.Substring(6)
             Register-TtCaptureCleanup
-            if (-not (Start-TtCaptureTranscript $staging.Substring(8))) {
-                Set-TtCaptureUnavailable
-            }
+            $null = Start-TtCaptureTranscript $staging.Substring(8)
         }
         elseif ($unavailable) {
-            Set-TtCaptureUnavailable
+            Set-TtCaptureUnavailable $unavailable.Substring(12)
+        }
+        elseif (-not $script:TtCaptureUnavailableNotified) {
+            Set-TtCaptureUnavailable 'loaderbridge'
         }
     }
     catch {
-        Set-TtCaptureUnavailable
+        Set-TtCaptureUnavailable 'unexpectedbootstrap'
     }
 }
 
@@ -151,9 +208,10 @@ function global:prompt {
                 $ttArguments += "native-exit-code=$ttNativeExitCode"
             }
 
-            $ttResult = @(& tt @ttArguments 2>$null)
+            $ttResult = @(Invoke-TtCaptureBridge $ttArguments)
             $nextStaging = $ttResult | Where-Object { $_ -like 'staging=*' } | Select-Object -Last 1
             $disabled = $ttResult | Where-Object { $_ -eq 'disabled=1' } | Select-Object -Last 1
+            $unavailable = $ttResult | Where-Object { $_ -like 'unavailable=*' } | Select-Object -Last 1
             if ($disabled) {
                 Disable-TtCaptureForLoadedSession
             }
@@ -161,33 +219,40 @@ function global:prompt {
                 $null = Start-TtCaptureTranscript $nextStaging.Substring(8)
             }
             else {
-                Set-TtCaptureUnavailable
+                Set-TtCaptureUnavailable $(if ($unavailable) { $unavailable.Substring(12) } else { 'loaderbridge' })
                 $ttFailedThisPrompt = $true
             }
         }
         catch {
-            Set-TtCaptureUnavailable
+            Set-TtCaptureUnavailable 'transcriptstop'
             $ttFailedThisPrompt = $true
         }
     }
     elseif (-not $script:TtCaptureDisabled -and $script:TtCaptureUnavailableNotified -and -not $ttFailedThisPrompt) {
         try {
             if ($env:TT_CAPTURE_SESSION_ID -and $env:TT_CAPTURE_SESSION_NONCE) {
-                $ttResult = @(& tt __capture recover "version=$($script:TtCaptureIntegrationVersion)" 2>$null)
+                $ttResult = @(Invoke-TtCaptureBridge @('__capture', 'recover', "version=$($script:TtCaptureIntegrationVersion)"))
                 $nextStaging = $ttResult | Where-Object { $_ -like 'staging=*' } | Select-Object -Last 1
                 $disabled = $ttResult | Where-Object { $_ -eq 'disabled=1' } | Select-Object -Last 1
+                $unavailable = $ttResult | Where-Object { $_ -like 'unavailable=*' } | Select-Object -Last 1
                 if ($disabled) {
                     Disable-TtCaptureForLoadedSession
                 }
                 elseif ($nextStaging) {
                     $null = Start-TtCaptureTranscript $nextStaging.Substring(8)
                 }
+                elseif ($unavailable) {
+                    Set-TtCaptureUnavailable $unavailable.Substring(12)
+                }
+                else {
+                    Set-TtCaptureUnavailable 'loaderbridge'
+                }
             }
             else {
                 Initialize-TtCapture
             }
         }
-        catch { Set-TtCaptureUnavailable }
+        catch { Set-TtCaptureUnavailable 'unexpectedbootstrap' }
     }
 
     if ($null -ne $ttNativeExitCode) {

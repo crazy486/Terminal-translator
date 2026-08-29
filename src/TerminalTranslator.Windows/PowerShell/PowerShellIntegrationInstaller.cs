@@ -6,23 +6,29 @@ namespace TerminalTranslator.Windows.PowerShell;
 
 public sealed class PowerShellIntegrationInstaller
 {
+    private const string ExecutablePathToken = "__TT_EXECUTABLE_PATH__";
     private readonly PowerShellProfileInstaller _profileInstaller;
 
     public PowerShellIntegrationInstaller(
         string? integrationDirectory = null,
-        PowerShellProfileInstaller? profileInstaller = null)
+        PowerShellProfileInstaller? profileInstaller = null,
+        string? executablePath = null)
     {
         IntegrationDirectory = integrationDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "TerminalTranslator",
             "PowerShell");
         LoaderPath = Path.Combine(IntegrationDirectory, "TerminalTranslator.Profile.ps1");
+        ExecutablePath = Path.GetFullPath(executablePath ?? Environment.ProcessPath ??
+            throw new InvalidOperationException("The Terminal Translator executable path is unavailable."));
         _profileInstaller = profileInstaller ?? new PowerShellProfileInstaller();
     }
 
     public string IntegrationDirectory { get; }
 
     public string LoaderPath { get; }
+
+    public string ExecutablePath { get; }
 
     public async Task InstallAsync(string profilePath, CancellationToken cancellationToken = default)
     {
@@ -101,6 +107,13 @@ public sealed class PowerShellIntegrationInstaller
         try
         {
             await using Stream resource = OpenLoaderResource();
+            using StreamReader reader = new(resource, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            string template = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            string loader = template.Replace(
+                ExecutablePathToken,
+                ExecutablePath.Replace("'", "''", StringComparison.Ordinal),
+                StringComparison.Ordinal);
+            byte[] loaderBytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(loader);
             await using (FileStream target = new(
                 temporaryPath,
                 FileMode.CreateNew,
@@ -109,7 +122,7 @@ public sealed class PowerShellIntegrationInstaller
                 4096,
                 FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
-                await resource.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
+                await target.WriteAsync(loaderBytes, cancellationToken).ConfigureAwait(false);
                 await target.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 

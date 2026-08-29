@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using TerminalTranslator.Windows.Tests.TestDoubles;
 
 namespace TerminalTranslator.Windows.Tests.Integration;
 
@@ -9,7 +10,8 @@ public sealed class CaptureHealthNotificationTests
     public async Task FailureEpochWarnsOnceAndRecoveryRestoresOnceOutsideCommandTranscripts()
     {
         using TemporaryDirectory temporary = new();
-        string loader = Path.Combine(AppContext.BaseDirectory, "TerminalTranslator.Profile.ps1").Replace("'", "''", StringComparison.Ordinal);
+        await using InstalledPowerShellLoader installedLoader = await InstalledPowerShellLoader.CreateAsync();
+        string loader = installedLoader.LoaderPath.Replace("'", "''", StringComparison.Ordinal);
         string first = Path.Combine(temporary.Path, "first.txt").Replace("'", "''", StringComparison.Ordinal);
         string recovered = Path.Combine(temporary.Path, "recovered.txt").Replace("'", "''", StringComparison.Ordinal);
         string next = Path.Combine(temporary.Path, "next.txt").Replace("'", "''", StringComparison.Ordinal);

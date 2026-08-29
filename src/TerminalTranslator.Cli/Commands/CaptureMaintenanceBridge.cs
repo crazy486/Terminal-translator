@@ -42,10 +42,10 @@ internal sealed class CaptureMaintenanceBridge(
                 _ => 2,
             };
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
-            InvalidDataException or ArgumentException or FormatException or OverflowException)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             await _error.WriteLineAsync("Capture maintenance failed (local lifecycle state unavailable).").ConfigureAwait(false);
+            await _output.WriteLineAsync("unavailable=unexpectedbootstrap").ConfigureAwait(false);
             return 6;
         }
     }
@@ -57,6 +57,7 @@ internal sealed class CaptureMaintenanceBridge(
             !CaptureSessionIdentity.TryGetDirectParentOwner(out CaptureOwnerIdentity? observedOwner) ||
             observedOwner != suppliedOwner)
         {
+            await _output.WriteLineAsync("unavailable=ownervalidation").ConfigureAwait(false);
             return 5;
         }
 
@@ -83,7 +84,7 @@ internal sealed class CaptureMaintenanceBridge(
 
         if (result.Status != CaptureBootstrapStatus.Active)
         {
-            await _output.WriteLineAsync("unavailable=storage").ConfigureAwait(false);
+            await _output.WriteLineAsync($"unavailable={ToDiagnosticToken(result.FailureReason)}").ConfigureAwait(false);
             return 6;
         }
 
@@ -223,6 +224,23 @@ internal sealed class CaptureMaintenanceBridge(
         values.TryGetValue(key, out string? value) && !string.IsNullOrWhiteSpace(value)
             ? value
             : throw new ArgumentException($"Missing capture maintenance field: {key}.");
+
+    private static string ToDiagnosticToken(CaptureFailureReason reason) => reason switch
+    {
+        CaptureFailureReason.StorageCreation => "storagecreation",
+        CaptureFailureReason.SessionIdentity => "sessionidentity",
+        CaptureFailureReason.OwnerValidation => "ownervalidation",
+        CaptureFailureReason.TranscriptStart => "transcriptstart",
+        CaptureFailureReason.TranscriptStop => "transcriptstop",
+        CaptureFailureReason.MetadataWrite or CaptureFailureReason.Metadata => "metadatawrite",
+        CaptureFailureReason.LoaderBridge => "loaderbridge",
+        CaptureFailureReason.Boundary => "boundary",
+        CaptureFailureReason.Snapshot => "snapshot",
+        CaptureFailureReason.Retention => "retention",
+        CaptureFailureReason.Cleanup => "cleanup",
+        CaptureFailureReason.Storage => "storage",
+        _ => "unexpectedbootstrap",
+    };
 
     private static IReadOnlyDictionary<string, string> Parse(IReadOnlyList<string> arguments)
     {

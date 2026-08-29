@@ -36,14 +36,17 @@ public sealed class CaptureSessionBootstrap
     private const int ManifestVersion = 1;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly Action<string>? _afterSessionDirectoryCreated;
+    private readonly Action<string>? _beforeMetadataWritten;
 
     public CaptureSessionBootstrap(
         string captureRoot,
-        Action<string>? afterSessionDirectoryCreated = null)
+        Action<string>? afterSessionDirectoryCreated = null,
+        Action<string>? beforeMetadataWritten = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(captureRoot);
         CaptureRoot = Path.GetFullPath(captureRoot);
         _afterSessionDirectoryCreated = afterSessionDirectoryCreated;
+        _beforeMetadataWritten = beforeMetadataWritten;
     }
 
     public string CaptureRoot { get; }
@@ -71,10 +74,13 @@ public sealed class CaptureSessionBootstrap
             return NonActive(CaptureBootstrapStatus.Disabled);
         }
 
-        CaptureSessionProof proof = CaptureSessionIdentity.Create(owner, integrationVersion);
+        CaptureSessionProof? proof = null;
         string? sessionDirectory = null;
+        CaptureFailureReason failureReason = CaptureFailureReason.SessionIdentity;
         try
         {
+            proof = CaptureSessionIdentity.Create(owner, integrationVersion);
+            failureReason = CaptureFailureReason.StorageCreation;
             if (OperatingSystem.IsWindows())
             {
                 ProtectedCaptureStorage storage = new(CaptureRoot);
@@ -88,6 +94,8 @@ public sealed class CaptureSessionBootstrap
             }
             _afterSessionDirectoryCreated?.Invoke(sessionDirectory);
 
+            failureReason = CaptureFailureReason.MetadataWrite;
+            _beforeMetadataWritten?.Invoke(sessionDirectory);
             CaptureOwnerManifest manifest = new(
                 ManifestVersion,
                 proof,
@@ -111,8 +119,7 @@ public sealed class CaptureSessionBootstrap
                 CaptureFailureReason.None,
                 CaptureHealthNotification.None);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
-            InvalidOperationException or System.Security.SecurityException)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             if (sessionDirectory is not null)
             {
@@ -120,14 +127,14 @@ public sealed class CaptureSessionBootstrap
             }
 
             CaptureHealth health = new();
-            CaptureHealthNotification notification = health.MarkUnavailable(CaptureFailureReason.Storage);
+            CaptureHealthNotification notification = health.MarkUnavailable(failureReason);
             return new CaptureBootstrapResult(
                 CaptureBootstrapStatus.Unavailable,
                 null,
                 null,
                 null,
                 new Dictionary<string, string>(),
-                CaptureFailureReason.Storage,
+                failureReason,
                 notification);
         }
     }

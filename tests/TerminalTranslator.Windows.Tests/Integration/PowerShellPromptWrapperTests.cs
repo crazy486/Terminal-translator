@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using TerminalTranslator.Windows.Tests.TestDoubles;
 
 namespace TerminalTranslator.Windows.Tests.Integration;
 
@@ -8,10 +9,10 @@ public sealed class PowerShellPromptWrapperTests
     [TestMethod]
     public async Task Wrapper_PreservesCustomPromptAndSnapshotsStateBeforeMaintenance()
     {
-        string loader = Path.Combine(AppContext.BaseDirectory, "TerminalTranslator.Profile.ps1");
-        string escapedLoader = loader.Replace("'", "''", StringComparison.Ordinal);
+        await using InstalledPowerShellLoader installedLoader = await InstalledPowerShellLoader.CreateAsync();
+        string escapedLoader = installedLoader.LoaderPath.Replace("'", "''", StringComparison.Ordinal);
         string command = $@"
-function global:tt {{ param([Parameter(ValueFromRemainingArguments=$true)]$Remaining); if ($Remaining -contains 'initialize') {{ 'disabled' }} }}
+function global:tt {{ param([Parameter(ValueFromRemainingArguments=$true)]$Remaining); if ($Remaining -contains 'initialize') {{ 'disabled=1' }} }}
 function global:prompt {{ 'CUSTOM:' + $? + ':' + $global:LASTEXITCODE + '> ' }}
 . '{escapedLoader}'
 & $env:ComSpec /d /c exit 7
@@ -47,7 +48,7 @@ prompt
         StringAssert.Contains(loader, "Start-Transcript");
         StringAssert.Contains(loader, "Stop-Transcript");
         StringAssert.Contains(loader, "TtOriginalPrompt");
-        Assert.IsLessThan(loader.IndexOf("& tt @ttArguments", StringComparison.Ordinal), loader.IndexOf("$ttSucceeded = $?", StringComparison.Ordinal));
+        Assert.IsLessThan(loader.IndexOf("Invoke-TtCaptureBridge $ttArguments", StringComparison.Ordinal), loader.IndexOf("$ttSucceeded = $?", StringComparison.Ordinal));
         Assert.IsFalse(loader.Contains("^PS", StringComparison.Ordinal));
     }
 

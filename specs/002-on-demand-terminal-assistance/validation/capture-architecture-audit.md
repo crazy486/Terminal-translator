@@ -121,3 +121,10 @@ failure and is unreachable from Feature 002 capture composition.
 session/command metadata. There is no Console Buffer fallback, alternate terminal source, recency
 lookup fallback, or Feature 002 ConPTY source. The oversized policy remains downstream of the same
 Transcript capture and publishes through the same retained store.
+
+## 2026-08-27 bootstrap remediation applicability
+
+**Targeted re-audit:** PASS for the new binary. Re-running the rejected-source search produced no
+matches. The remediation binds the loader to its installing executable and does not add a capture
+source, fallback, recency lookup, Console Buffer path, or Feature 002 ConPTY path. The accepted
+Transcript-plus-metadata call path is unchanged after the loader reaches the hidden bridge.

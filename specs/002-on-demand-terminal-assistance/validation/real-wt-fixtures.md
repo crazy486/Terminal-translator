@@ -1,13 +1,14 @@
 # Real Windows Terminal acceptance fixtures (T126 preparation only)
 
 **Status:** PREPARED — NOT RUN  
+**Release hold:** Do not run T127-T129 until the remediation Gate A and Feature 001 matrices pass.
 **Supported topology:** Windows Terminal + Windows PowerShell 5.1 Desktop  
 **Prepared branch / HEAD:** `002-on-demand-terminal-assistance` /
-`414ba31171931f1743dc721ed7bf9cd8b69a2df7`  
+`5f28d445f0b0e4ffeddb28df8b822c166e942bb1`
 **Prepared published artifact:**
 `src/TerminalTranslator.Cli/bin/Release/net10.0/win-x64/publish/tt.exe`  
-**Prepared artifact size / SHA-256:** `74,657,433` bytes /
-`C038B4887A494A13420FC52A8029F82ECF4EA8B66BCECF091718CDFEDA738AFD`
+**Prepared artifact size / SHA-256:** `74,661,017` bytes /
+`39A3AD3542E9054CBDBCC5011C0074AD97D668F844715AF9119B76CDC780E2E3`
 
 This file prepares T127–T129. Nothing below was executed while preparing T126, no box is
 pre-checked, and no real profile, Capture installation, session, provider, credential, or API key was
@@ -19,8 +20,9 @@ touched. Run these scenarios only in the later real-WT acceptance tasks.
 > records only provider/model/destination and result category.
 
 Use a disposable test profile/user where practical. Commands named `$TtExe` invoke the prepared
-published binary directly. Capture profile integration itself resolves `tt`, so the published build
-under test must also be the `tt` found on `PATH` before enablement.
+published binary directly. Capture configuration binds that exact absolute executable path into the
+managed loader; neither enablement nor later new-shell bootstrap depends on `PATH` or a `$tt`
+variable.
 
 ### Environment and published-build identity
 
@@ -32,14 +34,11 @@ Action:
 ```powershell
 $Repo = 'D:\Projects\Terminal Translator'
 $TtExe = (Resolve-Path (Join-Path $Repo 'src\TerminalTranslator.Cli\bin\Release\net10.0\win-x64\publish\tt.exe')).Path
-$PathTt = (Get-Command tt -ErrorAction Stop).Source
 Get-AppxPackage Microsoft.WindowsTerminal | Select-Object Name, Version
 Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture
 $PSVersionTable | Select-Object PSVersion, PSEdition, Platform
 [pscustomobject]@{
   PublishedTt = $TtExe
-  PathTt = $PathTt
-  SameExecutable = ([IO.Path]::GetFullPath($TtExe) -eq [IO.Path]::GetFullPath($PathTt))
   TtVersion = (& $TtExe --version)
   Sha256 = (Get-FileHash -LiteralPath $TtExe -Algorithm SHA256).Hash
   Profile = $PROFILE
@@ -58,13 +57,12 @@ Expected:
 
 - Windows Terminal version, Windows build, PowerShell `5.1` / `Desktop`, profile path, branch, HEAD,
   executable version, and SHA-256 are visible.
-- `SameExecutable` is `True`; the SHA-256 matches the prepared artifact unless a later approved
-  rebuild is explicitly recorded.
+- The SHA-256 matches the prepared artifact unless a later approved rebuild is explicitly recorded.
 - No API key name/value or full environment dump appears.
 
 Evidence to record:
 
-- Versions/build, both `tt` paths, SHA-256, branch/HEAD, profile path, and safe preference state.
+- Versions/build, published `tt` path, SHA-256, branch/HEAD, profile path, and safe preference state.
 
 Result:
 

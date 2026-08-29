@@ -11,6 +11,12 @@ public enum CaptureFailureReason
     Retention,
     Cleanup,
     Storage,
+    StorageCreation,
+    SessionIdentity,
+    OwnerValidation,
+    MetadataWrite,
+    LoaderBridge,
+    UnexpectedBootstrap,
     Unknown,
 }
 

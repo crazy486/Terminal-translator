@@ -37,3 +37,21 @@ relay, IPC security, session startup, provider safe transport, failure isolation
 runtime journey all passed. Feature 002 on-demand composition remains outside
 `ProductionTranslationPipeline`, `TranslationWorkQueue`, `TranslationWorker`, ConPTY, IPC, and the
 companion renderer.
+
+## 2026-08-27 bootstrap remediation refresh
+
+**Current remediation result:** BLOCKED by the same validation-host Win32 5 process-start policy as
+Gate A. The unchanged 160-test matrix completed 147 passed / 13 failed; all 13 failures occurred
+before their PowerShell/ConPTY scenario started (`powershell.exe` access denied or ConPTY Win32 5).
+No Feature 001 product assertion failed. The historical 160/160 result above applies only to the
+pre-remediation binary and must be rerun cleanly for the new artifact.
+
+## 2026-08-27 coexistence remediation rerun
+
+**Current remediation result:** PASS.
+
+The unchanged formal Feature 001 matrix completed 160 passed / 0 failed / 0 skipped in 22.202s.
+This includes `tt start/on/off/status`, live classifier ownership, raw-loss/teardown, ConPTY relay,
+IPC security, session startup, provider contracts, failure isolation, companion rendering, and the
+production runtime journey. The separate RealConPty analysis class completed 34/34, including the
+new managed-profile hosted-exclusion regression and both actual CLI assembly fixture cases.

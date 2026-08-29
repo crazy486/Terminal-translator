@@ -78,10 +78,27 @@ public sealed class CaptureSessionBootstrapTests
             CapturePreference.Enabled, Parent, "2.0", false);
 
         Assert.AreEqual(CaptureBootstrapStatus.Unavailable, result.Status);
-        Assert.AreEqual(CaptureFailureReason.Storage, result.FailureReason);
+        Assert.AreEqual(CaptureFailureReason.StorageCreation, result.FailureReason);
         Assert.AreEqual(CaptureHealthNotification.CaptureUnavailable, result.Notification);
         Assert.AreEqual(0, Directory.GetDirectories(temporary.Path).Length);
         Assert.IsNull(result.Proof);
+    }
+
+    [TestMethod]
+    public async Task OpeningMetadataFailure_ReturnsSpecificContentFreeReason()
+    {
+        using TemporaryDirectory temporary = new();
+        CaptureSessionBootstrap bootstrap = new(
+            temporary.Path,
+            beforeMetadataWritten: _ => throw new IOException("synthetic metadata failure"));
+
+        CaptureBootstrapResult result = await bootstrap.InitializeAsync(
+            CapturePreference.Enabled, Parent, "2.0", false);
+
+        Assert.AreEqual(CaptureBootstrapStatus.Unavailable, result.Status);
+        Assert.AreEqual(CaptureFailureReason.MetadataWrite, result.FailureReason);
+        Assert.AreEqual(CaptureHealthNotification.CaptureUnavailable, result.Notification);
+        Assert.AreEqual(0, Directory.GetDirectories(temporary.Path).Length);
     }
 
     private sealed class TemporaryDirectory : IDisposable

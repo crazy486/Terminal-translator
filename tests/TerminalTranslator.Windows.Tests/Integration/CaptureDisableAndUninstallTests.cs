@@ -2,6 +2,7 @@ using System.Diagnostics;
 using TerminalTranslator.Core.Capture;
 using TerminalTranslator.Windows.Capture;
 using TerminalTranslator.Windows.PowerShell;
+using TerminalTranslator.Windows.Tests.TestDoubles;
 
 namespace TerminalTranslator.Windows.Tests.Integration;
 
@@ -40,8 +41,8 @@ public sealed class CaptureDisableAndUninstallTests
     public async Task LoadedSession_DisablesAtNextPromptAndDoesNotStartFutureIntervals()
     {
         using TemporaryDirectory temporary = new();
-        string loader = Path.Combine(AppContext.BaseDirectory, "TerminalTranslator.Profile.ps1");
-        string escapedLoader = loader.Replace("'", "''", StringComparison.Ordinal);
+        await using InstalledPowerShellLoader installedLoader = await InstalledPowerShellLoader.CreateAsync();
+        string escapedLoader = installedLoader.LoaderPath.Replace("'", "''", StringComparison.Ordinal);
         string staging = Path.Combine(temporary.Path, "active-transcript.txt").Replace("'", "''", StringComparison.Ordinal);
         string command = $@"
 $global:TtBoundaryCalls = 0

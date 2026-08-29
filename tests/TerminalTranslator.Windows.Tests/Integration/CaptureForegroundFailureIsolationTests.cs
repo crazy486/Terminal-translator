@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using TerminalTranslator.Windows.Tests.TestDoubles;
 
 namespace TerminalTranslator.Windows.Tests.Integration;
 
@@ -16,7 +17,8 @@ public sealed class CaptureForegroundFailureIsolationTests
     public async Task ForegroundCaptureFault_PreservesUserStreamsExitFactsPromptAndShell(string fault)
     {
         using TemporaryDirectory temporary = new();
-        string loader = Path.Combine(AppContext.BaseDirectory, "TerminalTranslator.Profile.ps1").Replace("'", "''", StringComparison.Ordinal);
+        await using InstalledPowerShellLoader installedLoader = await InstalledPowerShellLoader.CreateAsync();
+        string loader = installedLoader.LoaderPath.Replace("'", "''", StringComparison.Ordinal);
         string staging = Path.Combine(temporary.Path, "staging.txt").Replace("'", "''", StringComparison.Ordinal);
         string blockedParent = Path.Combine(temporary.Path, "blocked-parent");
         await File.WriteAllTextAsync(blockedParent, "not a directory");

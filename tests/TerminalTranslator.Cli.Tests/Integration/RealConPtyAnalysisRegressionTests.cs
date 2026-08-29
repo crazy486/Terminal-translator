@@ -7,6 +7,7 @@ using TerminalTranslator.Core.Translation;
 using TerminalTranslator.Windows.ConPty;
 using TerminalTranslator.Windows.Console;
 using TerminalTranslator.Windows.Ipc;
+using TerminalTranslator.Windows.PowerShell;
 
 namespace TerminalTranslator.Cli.Tests.Integration;
 
@@ -383,13 +384,13 @@ public sealed class RealConPtyAnalysisRegressionTests
         {
             Environment.SetEnvironmentVariable("TT_SESSION_ID", sessionId);
             Environment.SetEnvironmentVariable("TT_SESSION_NONCE", nonce);
-            string executable = Path.Combine(AppContext.BaseDirectory, "tt.exe")
+            string assembly = Path.Combine(AppContext.BaseDirectory, "tt.dll")
                 .Replace("'", "''", StringComparison.Ordinal);
 
             JourneyResult result = await RunPowerShell51Async(
             [
                 InputStep.Submit(
-                    $"Set-Alias -Name tt -Value '{executable}'\r\n",
+                    $"$script:TtCliAssembly = '{assembly}'; function global:tt {{ & dotnet $script:TtCliAssembly @args }}\r\n",
                     delayMilliseconds: 250),
                 InputStep.Submit("tt status\r\n"),
                 InputStep.Submit("tt off\r\n", delayMilliseconds: 500),
@@ -425,13 +426,13 @@ public sealed class RealConPtyAnalysisRegressionTests
         {
             Environment.SetEnvironmentVariable("TT_SESSION_ID", sessionId);
             Environment.SetEnvironmentVariable("TT_SESSION_NONCE", nonce);
-            string executable = Path.Combine(AppContext.BaseDirectory, "tt.exe")
+            string assembly = Path.Combine(AppContext.BaseDirectory, "tt.dll")
                 .Replace("'", "''", StringComparison.Ordinal);
 
             JourneyResult result = await RunPowerShell51Async(
             [
                 InputStep.Submit(
-                    $"Set-Alias -Name tt -Value '{executable}'\r\n",
+                    $"$script:TtCliAssembly = '{assembly}'; function global:tt {{ & dotnet $script:TtCliAssembly @args }}\r\n",
                     delayMilliseconds: 250),
                 InputStep.Submit("tt status\r\n"),
                 InputStep.Submit("Write-Output \"The real application output starts here.\"\r\n"),
@@ -666,13 +667,48 @@ public sealed class RealConPtyAnalysisRegressionTests
         Assert.AreEqual(0, result.Sources.Length, result.Diagnostic);
     }
 
+    [TestMethod]
+    public async Task PowerShell51Feature002ManagedProfile_HostedGuardPreventsCaptureContamination()
+    {
+        await using ControlledPowerShellProfile profile =
+            await ControlledPowerShellProfile.CreateCoexistenceAsync();
+
+        JourneyResult result = await RunPowerShell51Async(
+        [
+            InputStep.Submit("Write-Output \"The hosted application output is clean.\"\r\n", delayMilliseconds: 250),
+            InputStep.Submit("Write-Output \"The hosted shell remains interactive.\"\r\n", delayMilliseconds: 500),
+        ], controlledProfile: profile);
+
+        Assert.IsTrue(File.Exists(profile.ProfileLoadedMarker), result.Diagnostic);
+        Assert.IsTrue(File.Exists(profile.HostedGuardMarker), result.Diagnostic);
+        Assert.IsFalse(File.Exists(profile.BootstrapMarker), result.Diagnostic);
+        Assert.IsFalse(Directory.Exists(profile.CaptureSessionDirectory), result.Diagnostic);
+        Assert.IsFalse(File.Exists(profile.TranscriptPath), result.Diagnostic);
+        Assert.IsFalse(
+            Encoding.UTF8.GetString(result.TerminalBytes)
+                .Contains("Capture unavailable", StringComparison.Ordinal),
+            result.Diagnostic);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "The hosted application output is clean.",
+                "The hosted shell remains interactive.",
+            },
+            result.Sources,
+            result.Diagnostic);
+    }
+
     private static async Task<JourneyResult> RunPowerShell51Async(
         IReadOnlyList<InputStep> inputs,
         int viewportColumns = 120,
         bool enableAfterInitialPrompt = false,
         TimeSpan? providerDelay = null,
-        string? holdProviderUntilOutput = null)
+        string? holdProviderUntilOutput = null,
+        ControlledPowerShellProfile? controlledProfile = null)
     {
+        await using ControlledPowerShellProfile ownedProfile = controlledProfile is null
+            ? await ControlledPowerShellProfile.CreateEmptyAsync()
+            : ControlledPowerShellProfile.Borrow(controlledProfile);
         Guid sessionId = Guid.NewGuid();
         TraceRecorder trace = new();
         TaskCompletionSource? providerRelease = holdProviderUntilOutput is null
@@ -689,7 +725,7 @@ public sealed class RealConPtyAnalysisRegressionTests
         using CancellationTokenSource cancellation = new(JourneyTimeout);
         await using MemoryStream terminalOutput = new();
 
-        await using ProductionTranslationPipeline pipeline =
+        await using AsyncDisposeOnce<ProductionTranslationPipeline> pipelineLease = new(
             ProductionRuntimeComposition.CreateTranslationPipeline(
                 sessionId,
                 provider,
@@ -698,16 +734,17 @@ public sealed class RealConPtyAnalysisRegressionTests
                 viewportColumns: viewportColumns,
                 viewportRows: 20,
                 submittedCommandTracker: tracedCommands,
-                runtimeObserver: runtimeObserver);
+                runtimeObserver: runtimeObserver));
+        ProductionTranslationPipeline pipeline = pipelineLease.Value;
         if (!enableAfterInitialPrompt)
         {
             pipeline.Enable();
         }
 
-        await using ConPtySession conPty = ConPtySession.Start(
-            "powershell.exe",
-            "-NoLogo -NoExit -Command \"Set-PSReadLineOption -HistorySaveStyle SaveNothing\"",
+        await using ConPtySession conPty = ConPtySession.StartPowerShellWithProfile(
             Environment.CurrentDirectory,
+            ownedProfile.ProfilePath,
+            "Set-PSReadLineOption -HistorySaveStyle SaveNothing",
             new Coord((short)viewportColumns, 20));
         await using TraceReadStream tracedChildOutput = new(conPty.Output, trace, "raw-conpty-read");
         await using TraceWriteStream tracedProgramPane = new(terminalOutput, trace, "raw-pane-write");
@@ -826,11 +863,127 @@ public sealed class RealConPtyAnalysisRegressionTests
             0,
             exitCode,
             trace.Format(terminalOutput.ToArray(), provider.Sources));
+        await pipelineLease.DisposeAsync();
         return new JourneyResult(
             provider.Sources.ToArray(),
             tracedChildOutput.CapturedBytes,
             terminalOutput.ToArray(),
             trace);
+    }
+
+    private sealed class ControlledPowerShellProfile : IAsyncDisposable
+    {
+        private readonly bool _ownsDirectory;
+
+        private ControlledPowerShellProfile(string directoryPath, bool ownsDirectory)
+        {
+            DirectoryPath = directoryPath;
+            ProfilePath = Path.Combine(directoryPath, "profile.ps1");
+            ProfileLoadedMarker = Path.Combine(directoryPath, "profile-loaded.marker");
+            HostedGuardMarker = Path.Combine(directoryPath, "hosted-guard.marker");
+            BootstrapMarker = Path.Combine(directoryPath, "capture-bootstrap.marker");
+            CaptureSessionDirectory = Path.Combine(directoryPath, "capture-session");
+            TranscriptPath = Path.Combine(CaptureSessionDirectory, "transcript.txt");
+            _ownsDirectory = ownsDirectory;
+        }
+
+        public string DirectoryPath { get; }
+
+        public string ProfilePath { get; }
+
+        public string ProfileLoadedMarker { get; }
+
+        public string HostedGuardMarker { get; }
+
+        public string BootstrapMarker { get; }
+
+        public string CaptureSessionDirectory { get; }
+
+        public string TranscriptPath { get; }
+
+        public static async Task<ControlledPowerShellProfile> CreateEmptyAsync()
+        {
+            ControlledPowerShellProfile profile = CreateOwned();
+            await File.WriteAllTextAsync(profile.ProfilePath, string.Empty);
+            return profile;
+        }
+
+        public static async Task<ControlledPowerShellProfile> CreateCoexistenceAsync()
+        {
+            ControlledPowerShellProfile profile = CreateOwned();
+            try
+            {
+                string bridgePath = Path.Combine(profile.DirectoryPath, "fake-capture-bridge.ps1");
+                string preferencePath = Path.Combine(profile.DirectoryPath, "capture-preference.json");
+                await File.WriteAllTextAsync(preferencePath, "{\"enabled\":true}");
+                await File.WriteAllTextAsync(
+                    bridgePath,
+                    "$ErrorActionPreference = 'Stop'\r\n" +
+                    $"$preference = Get-Content -Raw -LiteralPath '{Escape(preferencePath)}' | ConvertFrom-Json\r\n" +
+                    "if (-not $preference.enabled) { 'disabled=1'; exit 0 }\r\n" +
+                    $"Set-Content -LiteralPath '{Escape(profile.BootstrapMarker)}' -Value 'called'\r\n" +
+                    $"$null = New-Item -ItemType Directory -Path '{Escape(profile.CaptureSessionDirectory)}' -Force\r\n" +
+                    $"Set-Content -LiteralPath '{Escape(profile.TranscriptPath)}' -Value 'unexpected transcript'\r\n" +
+                    "[Console]::Error.WriteLine('[tt] Capture unavailable. `tt last` will not work until capture recovers.')\r\n" +
+                    "'unavailable=loaderbridge'\r\n");
+
+                PowerShellIntegrationInstaller installer = new(
+                    Path.Combine(profile.DirectoryPath, "integration"),
+                    executablePath: bridgePath);
+                await File.WriteAllTextAsync(
+                    profile.ProfilePath,
+                    $"Set-Content -LiteralPath '{Escape(profile.ProfileLoadedMarker)}' -Value 'loaded'\r\n" +
+                    $"Set-Content -LiteralPath '{Escape(profile.HostedGuardMarker)}' -Value $env:TT_HOSTED_SESSION_ID\r\n");
+                await installer.InstallAsync(profile.ProfilePath);
+                return profile;
+            }
+            catch
+            {
+                await profile.DisposeAsync();
+                throw;
+            }
+        }
+
+        public static ControlledPowerShellProfile Borrow(ControlledPowerShellProfile profile) =>
+            new(profile.DirectoryPath, ownsDirectory: false);
+
+        public ValueTask DisposeAsync()
+        {
+            if (_ownsDirectory && Directory.Exists(DirectoryPath))
+            {
+                Directory.Delete(DirectoryPath, recursive: true);
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
+        private static ControlledPowerShellProfile CreateOwned()
+        {
+            string directory = Path.Combine(
+                Path.GetTempPath(),
+                $"tt-feature001-profile-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(directory);
+            return new ControlledPowerShellProfile(directory, ownsDirectory: true);
+        }
+
+        private static string Escape(string value) =>
+            value.Replace("'", "''", StringComparison.Ordinal);
+    }
+
+    private sealed class AsyncDisposeOnce<T>(T value) : IAsyncDisposable
+        where T : IAsyncDisposable
+    {
+        private int _disposed;
+
+        public T Value { get; } = value;
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                await Value.DisposeAsync();
+            }
+        }
     }
 
     private static async Task RelayInputAsync(
