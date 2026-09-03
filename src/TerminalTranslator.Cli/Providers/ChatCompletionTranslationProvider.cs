@@ -40,8 +40,11 @@ public sealed class ChatCompletionTranslationProvider(
         ChatCompletionRequestDto payload = new(
             settings.Model,
             [new("system", SystemPrompt), new("user", request.SourceText)],
-            0);
-        ChatCompletionResponseDto dto = await _transport.SendAsync(payload, request.Deadline, cancellationToken).ConfigureAwait(false);
+            0,
+            new("disabled"),
+            null);
+        ProviderTransportResult transport = await _transport.SendAsync(payload, request.Deadline, cancellationToken).ConfigureAwait(false);
+        ChatCompletionResponseDto dto = transport.Response;
         string? translatedText = dto.Choices?.FirstOrDefault()?.Message?.Content?.Trim();
         if (string.IsNullOrEmpty(translatedText) || Encoding.UTF8.GetByteCount(translatedText) > 16 * 1024)
         {

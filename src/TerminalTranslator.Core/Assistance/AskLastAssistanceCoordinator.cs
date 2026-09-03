@@ -55,7 +55,7 @@ public sealed class AskLastAssistanceCoordinator
             ResponseLanguagePolicy.Select(question),
             snapshot.CommandText,
             snapshot.Output,
-            new TerminationFacts(snapshot.ExitCode, snapshot.WasInterrupted),
+            new TerminationFacts(snapshot.PowerShellSucceeded, snapshot.NativeExitCode, snapshot.WasInterrupted),
             snapshot.LocalCompleteness,
             snapshot.OriginalOutputBytes);
         AiSelectionResult selection = AiRequestSelector.Select(
@@ -77,9 +77,7 @@ public sealed class AskLastAssistanceCoordinator
         }
         catch (TranslationProviderException exception)
         {
-            return new(exception.Code == TranslationErrorCode.Timeout
-                ? AssistanceFailureKind.ProviderTimeout
-                : AssistanceFailureKind.ProviderError, request);
+            return new(AssistanceProviderFailureMapper.Map(exception), request);
         }
     }
 

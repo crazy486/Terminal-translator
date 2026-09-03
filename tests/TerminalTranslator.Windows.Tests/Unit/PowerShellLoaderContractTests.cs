@@ -6,6 +6,52 @@ namespace TerminalTranslator.Windows.Tests.Unit;
 public sealed class PowerShellLoaderContractTests
 {
     [TestMethod]
+    public async Task InstallerGeneratedLoader_ExactlyPreservesRepositoryProducerDrainContract()
+    {
+        using TemporaryDirectory temporary = new();
+        string profile = Path.Combine(temporary.Path, "profile.ps1");
+        string bridge = Path.Combine(temporary.Path, "capture bridge.ps1");
+        await File.WriteAllTextAsync(bridge, "param()\r\n");
+        PowerShellIntegrationInstaller installer = new(
+            Path.Combine(temporary.Path, "PowerShell"),
+            executablePath: bridge,
+            productDirectory: temporary.Path);
+
+        await installer.InstallAsync(profile);
+
+        string repositoryProfile = await File.ReadAllTextAsync(
+            Path.Combine(AppContext.BaseDirectory, "TerminalTranslator.Profile.ps1"));
+        string generated = await File.ReadAllTextAsync(installer.LoaderPath);
+        string expected = repositoryProfile.Replace(
+            "__TT_EXECUTABLE_PATH__",
+            bridge.Replace("'", "''", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        Assert.AreEqual(expected, generated);
+        AssertDrainContract(generated);
+    }
+
+    [TestMethod]
+    public async Task DefaultInstallLayout_UsesProductOwnedLocalApplicationDataVersion()
+    {
+        using TemporaryDirectory temporary = new();
+        string executable = Path.Combine(temporary.Path, "published.exe");
+        await File.WriteAllTextAsync(executable, "published-product");
+
+        PowerShellIntegrationInstaller installer = new(executablePath: executable);
+
+        string expectedProduct = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TerminalTranslator");
+        Assert.AreEqual(Path.GetFullPath(expectedProduct), installer.ProductDirectory);
+        Assert.AreEqual(Path.Combine(expectedProduct, "PowerShell"), installer.IntegrationDirectory);
+        StringAssert.StartsWith(
+            installer.InstalledExecutablePath,
+            Path.Combine(expectedProduct, "Versions") + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.AreEqual("tt.exe", Path.GetFileName(installer.InstalledExecutablePath));
+    }
+
+    [TestMethod]
     public async Task Install_WritesVersionedLocalLoaderAndMarkedProfileBlockIdempotently()
     {
         using TemporaryDirectory temporary = new();
@@ -27,12 +73,15 @@ public sealed class PowerShellLoaderContractTests
         StringAssert.Contains(loader, "TT_HOSTED_SESSION_ID");
         StringAssert.Contains(loader, "TtOriginalPrompt");
         StringAssert.Contains(loader, "TtCaptureIntegrationVersion");
-        StringAssert.Contains(loader, executable.Replace("'", "''", StringComparison.Ordinal));
+        StringAssert.Contains(loader, installer.InstalledExecutablePath.Replace("'", "''", StringComparison.Ordinal));
+        Assert.IsTrue(File.Exists(installer.InstalledExecutablePath));
         Assert.IsLessThan(
             loader.IndexOf("Initialize-TtCapture", StringComparison.Ordinal),
             loader.IndexOf("$env:TT_CAPTURE_SESSION_ID = $null", StringComparison.Ordinal));
         Assert.IsFalse(loader.Contains("& tt", StringComparison.Ordinal));
-        Assert.IsFalse(loader.Contains("Get-Command tt", StringComparison.Ordinal));
+        StringAssert.Contains(loader, "Get-Command -Name tt");
+        StringAssert.Contains(loader, "Set-Alias -Name tt -Value $script:TtExecutablePath -Scope Global -Force");
+        StringAssert.Contains(loader, "TtManagedCommandOwner");
         Assert.IsFalse(loader.Contains("^PS", StringComparison.Ordinal));
         StringAssert.Contains(once, installer.LoaderPath.Replace("'", "''", StringComparison.Ordinal));
     }
@@ -104,6 +153,45 @@ public sealed class PowerShellLoaderContractTests
     }
 
     private sealed record ProcessResult(int ExitCode, string Output, string Error);
+
+    private static void AssertDrainContract(string loader)
+    {
+        int pipelineComplete = loader.IndexOf("TranscribePipelineComplete", StringComparison.Ordinal);
+        int flush = loader.IndexOf("FlushContentToDisk", StringComparison.Ordinal);
+        int nativeReaderMode = loader.IndexOf("AlwaysCaptureApplicationIO", StringComparison.Ordinal);
+        int completion = loader.IndexOf("Complete-TtTranscriptProducer", nativeReaderMode, StringComparison.Ordinal);
+        int firstPass = loader.IndexOf("producer-pass-one", completion, StringComparison.Ordinal);
+        int secondPass = loader.IndexOf("producer-pass-two", firstPass, StringComparison.Ordinal);
+        int stop = loader.IndexOf("Stop-Transcript -ErrorAction Stop", secondPass, StringComparison.Ordinal);
+        int metadata = loader.IndexOf("transcript-drained=$ttTranscriptDrained", stop, StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, pipelineComplete);
+        Assert.IsGreaterThan(pipelineComplete, flush);
+        Assert.IsGreaterThanOrEqualTo(0, nativeReaderMode);
+        Assert.IsGreaterThan(nativeReaderMode, completion);
+        Assert.IsGreaterThan(completion, firstPass);
+        Assert.IsGreaterThan(firstPass, secondPass);
+        Assert.IsGreaterThan(secondPass, stop);
+        Assert.IsGreaterThan(stop, metadata);
+        StringAssert.Contains(loader, "OutputToLog");
+        StringAssert.Contains(loader, "OutputBeingLogged");
+        StringAssert.Contains(loader, "native-file-redirection=");
+        StringAssert.Contains(loader, "FileRedirectionAst");
+        StringAssert.Contains(loader, "Register-TtNativeCaptureCommandHook");
+        StringAssert.Contains(loader, "AddToHistoryHandler");
+        StringAssert.Contains(loader, "priorHandler(line)");
+        StringAssert.Contains(loader, "_delayedOneTimeInitCompleted");
+        Assert.IsFalse(loader.Contains("GetBufferState", StringComparison.Ordinal));
+        StringAssert.Contains(loader, "ReadLastHistoryCommand");
+        StringAssert.Contains(loader, "ApplyLastAccepted");
+        StringAssert.Contains(loader, "HandleAcceptedHistory");
+        StringAssert.Contains(loader, "Restore-TtNativeCaptureCommandHook");
+        StringAssert.Contains(loader, "IsTtySensitive");
+        StringAssert.Contains(loader, "\"codex\"");
+        StringAssert.Contains(loader, "Set-TtNativeCaptureMode $false");
+        Assert.IsLessThan(
+            loader.IndexOf("Start-Transcript -LiteralPath $Path", StringComparison.Ordinal),
+            loader.IndexOf("Set-TtNativeCaptureMode $false", StringComparison.Ordinal));
+    }
 
     private sealed class TemporaryDirectory : IDisposable
     {

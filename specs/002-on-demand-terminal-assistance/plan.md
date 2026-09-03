@@ -158,6 +158,12 @@ tt ask "question"
   loader under `%LOCALAPPDATA%\TerminalTranslator\PowerShell`, and adds one uniquely marked dot-source
   block to the Windows PowerShell CurrentUser/CurrentHost profile. The edit is idempotent and keeps a
   recoverable original/profile state; it does not replace the whole profile.
+- The same operation copies the single-file product binary into a content-addressed directory below
+  `%LOCALAPPDATA%\TerminalTranslator\Versions`. The managed loader binds both its hidden capture
+  bridge and a public global `tt` alias to that one installed path. It checks `Get-Command tt` first,
+  preserves a pre-existing non-TT command with a warning, and never mutates User or Machine PATH.
+  Upgrades publish a new immutable version and atomically replace the loader, so already-open shells
+  remain internally consistent while fresh shells resolve the new binary.
 - The loader runs after existing profile content, saves the existing `prompt` function, and installs
   a wrapper that always calls the saved prompt. Custom prompt text is never parsed to identify a
   boundary.
@@ -202,10 +208,21 @@ tt ask "question"
 - The preceding prompt invocation opens the next command interval by starting a fresh transcript
   staging file and recording a sidecar-only opening boundary tied to session and sequence identity.
   Boundary metadata and transcript start/stop status are suppressed from user-visible output.
+- The initial transcript interval starts with native joined-reader capture disabled. A preserved
+  PSReadLine accepted-history hook uses a managed delegate to classify after PSReadLine accepts the
+  line but before `ReadLine` returns for process creation. Direct
+  capture-safe native commands enable the T133 joined stdout/stderr reader; TTY-sensitive/TUI,
+  pager, remote-shell, interactive-runtime, unknown, and indirect invocations retain genuine console
+  handles. Transcript rotation reapplies the last accepted classification so an immediately repeated
+  command remains correct when PSReadLine suppresses its duplicate history callback.
 - At the next prompt invocation, the wrapper snapshots `Get-History -Count 1`, `$?`, relevant
   `$LASTEXITCODE`, history execution status, and interruption evidence before running TT maintenance.
-  It records a sidecar-only closing boundary, stops/flushes the transcript, and finalizes only when
-  history, transcript command echo, sequence, file lifecycle, and session metadata agree.
+  For a command classified capture-safe, Windows PowerShell 5.1 native application I/O is routed
+  through the engine's joined stdout/stderr reader path instead of its finite console-buffer scrape.
+  TTY-sensitive applications bypass that capture mode and keep console stdin/stdout/stderr. At prompt,
+  two synchronous pipeline/Transcript flushes must each observe empty producer queues and unchanged
+  staging length before Stop-Transcript. Finalization proceeds only when history, transcript command
+  echo, sequence, file lifecycle, producer completion, and session metadata agree.
 - Command text comes from PowerShell session history/metadata, not prompt text. Multiline input is
   retained as one history entry. `$?` alone is not treated as proof of interruption.
 - The currently executing `tt last`/`tt ask last` does not become finalized until the following
@@ -227,10 +244,11 @@ Use **per-command transcript staging followed by boundary-time immutable record 
 
 1. The active native transcript writes to a protected session staging path. It is not a retained
    command record and may exceed 10,180,000 bytes while the command runs.
-2. At the safe boundary, stop/flush the transcript, then within a bounded wait obtain an exclusive,
-   stable file snapshot and record its byte length/hash in sidecar metadata. Failure to reach that
-   quiescent state rejects the candidate. Validate the complete command interval only from that
-   stable snapshot.
+2. At the safe boundary, require the joined native-reader invariant, two synchronous transcript
+   flush/drain passes, and content stability; then stop the transcript and obtain an exclusive,
+   stable file snapshot. Failure of any signal rejects the candidate. PowerShell 5.1 exposes no
+   public native-transcription completion event, so the integration fails closed if the required
+   engine capability or internal structural validation is unavailable.
 3. Define `RetainedBytes` canonically as the sum of logical byte lengths for every record content and
    record metadata/index referenced by the single committed manifest generation, including that
    committed manifest. Active/unpublished candidates, transaction temporaries, old manifests, and
@@ -346,6 +364,20 @@ length threshold. Feature 001 regression tests are a mandatory gate for any shar
   no line boundary exists, use the rune-safe cut. If required context cannot fit, fail closed rather
   than silently omit its meaning.
 
+### T137 DeepSeek production request profile
+
+- Extend the shared typed Chat Completions request DTO with `thinking` and an optional
+  `response_format`; do not construct request JSON with string concatenation.
+- Both the Feature 001 translation adapter and Feature 002 assistance adapter use the configured
+  model and shared transport, so both explicitly send `thinking: {"type":"disabled"}`.
+- All three assistance request kinds already require JSON in their system prompts and parse a JSON
+  business schema from `message.content`; they additionally send
+  `response_format: {"type":"json_object"}`. The live translation adapter expects plain translated
+  text, so it omits `response_format` and retains its existing prompt unchanged.
+- Keep `temperature: 0`; omit `reasoning_effort`, `max_tokens`, and `stream`; preserve the ten-second
+  transport `CancelAfter`, infinite production assistance `HttpClient.Timeout`, no retry, response
+  byte bound, and every T136 malformed-response diagnostic and schema check.
+
 ### CLI and inline rendering
 
 - Add root `last` and `ask` commands through the existing command factory/composition pattern.
@@ -372,6 +404,9 @@ length threshold. Feature 001 regression tests are a mandatory gate for any shar
   parsing, multiline and custom-prompt independence, no-output/no-previous outcomes, contextual
   self-pollution exclusion, async boundary exclusion, inconsistent/corrupt metadata, and Ctrl+C
   confidence rules.
+- Pre-execution native classification, preservation of an existing PSReadLine history handler,
+  genuine stdin/stdout/stderr terminal handles for Codex/TUI probes, and joined-reader capture for
+  capture-safe commands in the immediately following interval.
 - Whole-output English eligibility for tiny English, Chinese-only, mixed language, and technical
   tokens; no provider call for Chinese-only output.
 - Conditional configure parsing: capture-only, unchanged provider-only, rejected combined/partial
@@ -402,7 +437,8 @@ Run the [quickstart](./quickstart.md) in the real GUI topology, not only an agen
 ordinary output, PowerShell error, native interleaved stdout/stderr, no output, no previous command,
 multiline input, custom prompt, Ctrl+C, `Clear-Host`, under/over AI budget, one command over the local
 retained cap, two independent panes, capture failure without shell damage, normal close cleanup, and
-crash-residue cleanup. TUI/full-screen/REPL behavior is recorded only as best effort.
+crash-residue cleanup. TUI screen reconstruction remains best effort, but launching a TTY-sensitive
+native application must preserve its genuine stdin/stdout/stderr console handles.
 
 ## Remaining Technical Risks
 

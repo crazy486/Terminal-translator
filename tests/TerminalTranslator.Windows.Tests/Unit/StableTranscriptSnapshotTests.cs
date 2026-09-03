@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using TerminalTranslator.Windows.Capture;
 
 namespace TerminalTranslator.Windows.Tests.Unit;
@@ -52,6 +53,37 @@ public sealed class StableTranscriptSnapshotTests
         StableTranscriptSnapshotResult result = await StableTranscriptSnapshot.AcquireAsync(path, TimeSpan.FromSeconds(1));
         await File.WriteAllTextAsync(path, "after mutation");
         Assert.IsFalse(await result.MatchesFileAsync(path));
+    }
+
+    [TestMethod]
+    public async Task AcquireAsync_DoesNotFinalizeTwoIdenticalReadsBeforeProducerCompletionEvidence()
+    {
+        using TemporaryDirectory temporary = new();
+        string path = Path.Combine(temporary.Path, "staging.txt");
+        await File.WriteAllTextAsync(path, "command echo\r\n");
+        int completionChecks = 0;
+        bool producerCompleted = false;
+        Task<StableTranscriptSnapshotResult> acquisition = StableTranscriptSnapshot.AcquireAsync(
+            path,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(1),
+            () =>
+            {
+                Interlocked.Increment(ref completionChecks);
+                return Volatile.Read(ref producerCompleted);
+            });
+
+        while (Volatile.Read(ref completionChecks) < 2)
+            await Task.Yield();
+        Assert.IsFalse(acquisition.IsCompleted, "Two unchanged observations cannot replace producer-completion evidence.");
+
+        await File.AppendAllTextAsync(path, "failed native stdout\r\n");
+        Volatile.Write(ref producerCompleted, true);
+        StableTranscriptSnapshotResult result = await acquisition;
+
+        Assert.IsTrue(result.IsStable);
+        Assert.AreEqual("command echo\r\nfailed native stdout\r\n", Encoding.UTF8.GetString(result.Content!));
+        Assert.IsTrue(await result.MatchesFileAsync(path));
     }
 
     [TestMethod]

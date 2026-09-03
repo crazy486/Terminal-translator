@@ -23,10 +23,19 @@ public sealed record ResponseLanguageSelection
     public string Instruction { get; }
 }
 
-public sealed record TerminationFacts(int? ExitCode, bool WasInterrupted)
+public sealed record TerminationFacts(bool? PowerShellSucceeded, int? NativeExitCode, bool WasInterrupted)
 {
+    public TerminationFacts(int? nativeExitCode, bool wasInterrupted)
+        : this(null, nativeExitCode, wasInterrupted)
+    {
+    }
+
+    public int? ExitCode => NativeExitCode;
+
     public string ToProviderText() =>
-        $"exitCode={(ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown")}; interrupted={WasInterrupted.ToString().ToLowerInvariant()}";
+        $"powerShellSucceeded={(PowerShellSucceeded?.ToString().ToLowerInvariant() ?? "unknown")}; " +
+        $"nativeExitCode={(NativeExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown")}; " +
+        $"interrupted={WasInterrupted.ToString().ToLowerInvariant()}";
 }
 
 public sealed record AssistanceRequest
@@ -94,7 +103,7 @@ public sealed record AssistanceRequest
         string question,
         ResponseLanguageSelection responseLanguage) =>
         new(AssistanceRequestKind.QuestionOnly, question, responseLanguage,
-            string.Empty, string.Empty, new TerminationFacts(null, false),
+            string.Empty, string.Empty, new TerminationFacts(null, null, false),
             LocalCaptureCompleteness.Complete, 0, AiInputCompleteness.Complete);
 
     public static AssistanceRequest CreateQuestionWithPreviousCommand(
@@ -246,6 +255,37 @@ public interface IAssistanceProvider
     Task<AssistanceResult> CompleteAsync(AuthorizedAssistanceRequest request, CancellationToken cancellationToken);
 }
 
+public enum AssistancePipelineStage
+{
+    Retrieval,
+    Eligibility,
+    Selection,
+}
+
+public sealed record AssistancePipelineDiagnostic(
+    AssistancePipelineStage Stage,
+    PreviousCommandResultKind RetrievalKind,
+    long? RetrievedOutputUtf8Bytes = null,
+    int? AsciiLetterCount = null,
+    int? ControlCharacterCount = null,
+    bool? EnglishEligible = null,
+    bool? SelectionSupported = null,
+    long? SelectedOutputUtf8Bytes = null);
+
+public interface IAssistancePipelineDiagnosticSink
+{
+    void Write(AssistancePipelineDiagnostic diagnostic);
+}
+
+public sealed class NullAssistancePipelineDiagnosticSink : IAssistancePipelineDiagnosticSink
+{
+    public static NullAssistancePipelineDiagnosticSink Instance { get; } = new();
+
+    public void Write(AssistancePipelineDiagnostic diagnostic)
+    {
+    }
+}
+
 public enum AssistanceFailureKind
 {
     None,
@@ -259,7 +299,29 @@ public enum AssistanceFailureKind
     ConsentMissingOrDeclined,
     SuspectedSecret,
     ProviderTimeout,
+    ProviderNetworkFailure,
+    ProviderHttpFailure,
+    ProviderMalformedResponse,
     ProviderError,
+}
+
+internal static class AssistanceProviderFailureMapper
+{
+    internal static AssistanceFailureKind Map(TerminalTranslator.Core.Translation.TranslationProviderException exception) =>
+        exception.Code == TerminalTranslator.Core.Translation.TranslationErrorCode.Timeout
+            ? AssistanceFailureKind.ProviderTimeout
+            : exception.Details?.Source switch
+            {
+                TerminalTranslator.Core.Translation.TranslationProviderFailureSource.Network =>
+                    AssistanceFailureKind.ProviderNetworkFailure,
+                TerminalTranslator.Core.Translation.TranslationProviderFailureSource.HttpStatus or
+                TerminalTranslator.Core.Translation.TranslationProviderFailureSource.Authentication or
+                TerminalTranslator.Core.Translation.TranslationProviderFailureSource.RateLimit =>
+                    AssistanceFailureKind.ProviderHttpFailure,
+                TerminalTranslator.Core.Translation.TranslationProviderFailureSource.MalformedResponse =>
+                    AssistanceFailureKind.ProviderMalformedResponse,
+                _ => AssistanceFailureKind.ProviderError,
+            };
 }
 
 public sealed record LastAssistanceOutcome(

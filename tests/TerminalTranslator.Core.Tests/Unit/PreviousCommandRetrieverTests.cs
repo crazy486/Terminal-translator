@@ -69,6 +69,18 @@ public sealed class PreviousCommandRetrieverTests
     }
 
     [TestMethod]
+    public void Retrieve_PreservesOrderedNativeStreamsAndPowerShellErrorSourceContext()
+    {
+        const string native = "The native command completed successfully.\nThe native command reported a recoverable warning.";
+        PreviousCommandResult nativeResult = PreviousCommandRetriever.Retrieve(State([Command(1, "native-probe", native)]));
+        Assert.AreEqual(native, nativeResult.Snapshot!.Output);
+
+        const string error = "Get-Item : Cannot find drive.\n+ Get-Item \"Z:\\TT_DEFINITELY_MISSING_002\"\n    + CategoryInfo : ObjectNotFound";
+        PreviousCommandResult errorResult = PreviousCommandRetriever.Retrieve(State([Command(1, "Get-Item \"Z:\\TT_DEFINITELY_MISSING_002\"", error)]));
+        Assert.AreEqual(error, errorResult.Snapshot!.Output);
+    }
+
+    [TestMethod]
     public void Retrieve_StrictIntegrityMatrixNeverFallsBack()
     {
         CapturedCommand older = Command(1, "git status", "older useful");

@@ -45,6 +45,25 @@ $env:Path = "$PWD\artifacts\publish\win-x64;$env:Path"
 tt --help
 ```
 
+The PATH assignment above is only a development-artifact convenience. To install the supported
+Windows PowerShell integration and the stable product command, run the published executable once:
+
+```powershell
+& .\artifacts\publish\win-x64\tt.exe configure --capture enabled
+```
+
+This copies the product binary below `%LOCALAPPDATA%\TerminalTranslator\Versions`, installs the
+managed profile loader, and exposes a native-semantics `tt` alias in each new Windows PowerShell 5.1
+profile session. Close the current shell and open a new ordinary shell, then `Get-Command tt` and all
+public commands work without a repository path or PATH update. If another command named `tt` already
+exists, Terminal Translator preserves it and warns instead of replacing it.
+
+The capture loader decides native I/O mode immediately before process creation. Ordinary
+capture-safe native commands use PowerShell's joined stdout/stderr reader for reliable `tt last`
+capture, while TTY-sensitive applications such as Codex keep genuine console stdin/stdout/stderr and
+launch normally. Additional interactive executable names can be supplied for a session through the
+semicolon- or comma-separated `TT_TTY_SENSITIVE_APPLICATIONS` environment variable.
+
 ## Provider configuration
 
 Terminal Translator currently supports a chat-completion-compatible HTTP endpoint. Put the API
@@ -79,6 +98,10 @@ only the current PowerShell process and processes started from it.
 | `tt on` | Disclose the destination/scope, request consent, and enable translation. |
 | `tt off` | Disable translation, cancel pending work, and suppress late results. |
 | `tt status` | Show content-free state, provider host/model, queue counts, and aggregate privacy/overload counts. |
+| `tt configure --capture enabled\|disabled` | Install/enable or disable the ordinary PowerShell capture integration and managed `tt` command. |
+| `tt last` | Translate the strict previous completed command output inline. |
+| `tt ask <question...>` | Ask one stateless terminal-oriented question. |
+| `tt ask last <question...>` | Ask one stateless question using the strict previous command context. |
 
 Run `on`, `off`, and `status` inside the managed program pane. Their authenticated session context
 is created by `tt start`; invoking them in an unrelated terminal reports that no live translation

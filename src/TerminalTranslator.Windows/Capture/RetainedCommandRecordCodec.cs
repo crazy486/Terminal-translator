@@ -16,7 +16,8 @@ public sealed record RetainedCommandMetadata(
     long BoundarySequence,
     string BoundaryCommandText,
     bool BoundaryReliable,
-    int? ExitCode,
+    bool? PowerShellSucceeded,
+    int? NativeExitCode,
     bool WasInterrupted,
     LocalCaptureCompleteness LocalCompleteness,
     long OriginalOutputBytes,
@@ -24,7 +25,7 @@ public sealed record RetainedCommandMetadata(
 
 public static class RetainedCommandRecordCodec
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static byte[] SerializeMetadata(CapturedCommand command)
@@ -42,7 +43,8 @@ public static class RetainedCommandRecordCodec
             command.Boundary.Sequence,
             command.Boundary.CommandText,
             command.Boundary.IsReliable,
-            command.Boundary.ExitCode,
+            command.Boundary.PowerShellSucceeded,
+            command.Boundary.NativeExitCode,
             command.Boundary.WasInterrupted,
             command.LocalCompleteness,
             command.OriginalOutputBytes,
@@ -92,8 +94,9 @@ public static class RetainedCommandRecordCodec
             persisted.BoundarySequence,
             persisted.BoundaryCommandText,
             persisted.BoundaryReliable,
-            persisted.ExitCode,
-            persisted.WasInterrupted);
+            persisted.NativeExitCode,
+            persisted.WasInterrupted,
+            persisted.PowerShellSucceeded);
         try
         {
             return new CapturedCommand(

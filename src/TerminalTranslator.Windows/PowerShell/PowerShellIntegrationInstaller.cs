@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using TerminalTranslator.Windows.Capture;
 
@@ -12,21 +13,36 @@ public sealed class PowerShellIntegrationInstaller
     public PowerShellIntegrationInstaller(
         string? integrationDirectory = null,
         PowerShellProfileInstaller? profileInstaller = null,
-        string? executablePath = null)
+        string? executablePath = null,
+        string? productDirectory = null)
     {
-        IntegrationDirectory = integrationDirectory ?? Path.Combine(
+        string defaultProductDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TerminalTranslator",
-            "PowerShell");
+            "TerminalTranslator");
+        ProductDirectory = Path.GetFullPath(productDirectory ??
+            (integrationDirectory is null ? defaultProductDirectory : integrationDirectory));
+        IntegrationDirectory = Path.GetFullPath(integrationDirectory ??
+            Path.Combine(ProductDirectory, "PowerShell"));
+        VersionsDirectory = Path.Combine(ProductDirectory, "Versions");
         LoaderPath = Path.Combine(IntegrationDirectory, "TerminalTranslator.Profile.ps1");
-        ExecutablePath = Path.GetFullPath(executablePath ?? Environment.ProcessPath ??
+        SourceExecutablePath = Path.GetFullPath(executablePath ?? Environment.ProcessPath ??
             throw new InvalidOperationException("The Terminal Translator executable path is unavailable."));
+        InstalledExecutablePath = ResolveInstalledExecutablePath(SourceExecutablePath, VersionsDirectory);
+        ExecutablePath = InstalledExecutablePath;
         _profileInstaller = profileInstaller ?? new PowerShellProfileInstaller();
     }
 
+    public string ProductDirectory { get; }
+
     public string IntegrationDirectory { get; }
 
+    public string VersionsDirectory { get; }
+
     public string LoaderPath { get; }
+
+    public string SourceExecutablePath { get; }
+
+    public string InstalledExecutablePath { get; }
 
     public string ExecutablePath { get; }
 
@@ -36,14 +52,19 @@ public sealed class PowerShellIntegrationInstaller
         byte[]? previousLoader = File.Exists(LoaderPath)
             ? await File.ReadAllBytesAsync(LoaderPath, cancellationToken).ConfigureAwait(false)
             : null;
+        Directory.CreateDirectory(ProductDirectory);
         Directory.CreateDirectory(IntegrationDirectory);
         if (OperatingSystem.IsWindows())
         {
-            new ProtectedCaptureStorage(IntegrationDirectory).ApplyProtectedAcl(IntegrationDirectory);
+            ProtectedCaptureStorage protection = new(ProductDirectory);
+            protection.ApplyProtectedAcl(ProductDirectory);
+            protection.ApplyProtectedAcl(IntegrationDirectory);
         }
 
+        bool installedExecutableCreated = false;
         try
         {
+            installedExecutableCreated = await InstallExecutableAsync(cancellationToken).ConfigureAwait(false);
             await WriteLoaderAsync(cancellationToken).ConfigureAwait(false);
             await _profileInstaller.InstallAsync(profilePath, LoaderPath, cancellationToken).ConfigureAwait(false);
         }
@@ -59,6 +80,11 @@ public sealed class PowerShellIntegrationInstaller
             else
             {
                 await RestoreLoaderAsync(previousLoader).ConfigureAwait(false);
+            }
+
+            if (installedExecutableCreated)
+            {
+                TryDeleteInstalledVersion(InstalledExecutablePath);
             }
 
             throw;
@@ -80,6 +106,7 @@ public sealed class PowerShellIntegrationInstaller
             }
             await _profileInstaller.RemoveAsync(profilePath, cancellationToken).ConfigureAwait(false);
             if (held && File.Exists(heldLoader)) File.Delete(heldLoader);
+            CleanupInstalledVersionsBestEffort();
         }
         catch
         {
@@ -99,6 +126,112 @@ public sealed class PowerShellIntegrationInstaller
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
+    }
+
+    private async Task<bool> InstallExecutableAsync(CancellationToken cancellationToken)
+    {
+        if (string.Equals(SourceExecutablePath, InstalledExecutablePath, StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(SourceExecutablePath) ||
+            !Path.GetExtension(SourceExecutablePath).Equals(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string versionDirectory = Path.GetDirectoryName(InstalledExecutablePath)!;
+        Directory.CreateDirectory(VersionsDirectory);
+        Directory.CreateDirectory(versionDirectory);
+        if (OperatingSystem.IsWindows())
+        {
+            ProtectedCaptureStorage protection = new(ProductDirectory);
+            protection.ApplyProtectedAcl(VersionsDirectory);
+            protection.ApplyProtectedAcl(versionDirectory);
+        }
+
+        string expectedHash = Path.GetFileName(versionDirectory);
+        if (File.Exists(InstalledExecutablePath))
+        {
+            ValidateExecutableHash(InstalledExecutablePath, expectedHash);
+            return false;
+        }
+
+        string temporaryPath = Path.Combine(versionDirectory, $".tt.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await using FileStream source = new(
+                SourceExecutablePath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            await using (FileStream target = new(
+                temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                81920, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await source.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
+                await target.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            ValidateExecutableHash(temporaryPath, expectedHash);
+            try
+            {
+                File.Move(temporaryPath, InstalledExecutablePath, overwrite: false);
+                return true;
+            }
+            catch (IOException) when (File.Exists(InstalledExecutablePath))
+            {
+                ValidateExecutableHash(InstalledExecutablePath, expectedHash);
+                return false;
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
+    }
+
+    private void CleanupInstalledVersionsBestEffort()
+    {
+        if (!Directory.Exists(VersionsDirectory)) return;
+        try
+        {
+            Directory.Delete(VersionsDirectory, recursive: true);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private static void TryDeleteInstalledVersion(string executablePath)
+    {
+        try
+        {
+            string? versionDirectory = Path.GetDirectoryName(executablePath);
+            if (versionDirectory is not null && Directory.Exists(versionDirectory))
+                Directory.Delete(versionDirectory, recursive: true);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private static string ResolveInstalledExecutablePath(string sourceExecutablePath, string versionsDirectory)
+    {
+        if (!File.Exists(sourceExecutablePath) ||
+            !Path.GetExtension(sourceExecutablePath).Equals(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return sourceExecutablePath;
+        }
+
+        string hash = ComputeSha256(sourceExecutablePath);
+        return Path.Combine(versionsDirectory, hash, "tt.exe");
+    }
+
+    private static void ValidateExecutableHash(string path, string expectedHash)
+    {
+        string actualHash = ComputeSha256(path);
+        if (!actualHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The installed Terminal Translator executable failed integrity validation.");
+    }
+
+    private static string ComputeSha256(string path)
+    {
+        using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
     private async Task WriteLoaderAsync(CancellationToken cancellationToken)

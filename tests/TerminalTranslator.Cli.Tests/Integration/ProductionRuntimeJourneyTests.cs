@@ -359,7 +359,7 @@ public sealed class ProductionRuntimeJourneyTests
         Task controlTask = controlServer.RunAsync(cancellation.Token);
         await using ConPtySession conPty = ConPtySession.Start(
             "powershell.exe",
-            "-NoLogo -NoExit -Command \"Set-PSReadLineOption -HistorySaveStyle SaveNothing\"",
+            "-NoLogo -NoProfile -NoExit -Command \"Set-PSReadLineOption -HistorySaveStyle SaveNothing\"",
             Path.GetTempPath(),
             new Coord(60, 20));
         await using MemoryStream programOutput = new();

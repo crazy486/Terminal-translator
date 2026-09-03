@@ -32,9 +32,7 @@ public sealed class AskAssistanceCoordinator(
         }
         catch (TranslationProviderException exception)
         {
-            return new(exception.Code == TranslationErrorCode.Timeout
-                ? AssistanceFailureKind.ProviderTimeout
-                : AssistanceFailureKind.ProviderError, request);
+            return new(AssistanceProviderFailureMapper.Map(exception), request);
         }
     }
 

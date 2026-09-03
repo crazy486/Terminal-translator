@@ -10,6 +10,14 @@ and `-NoProfile` sessions are not promised.
 
 - Enabling capture installs one TT-owned versioned loader under LocalAppData and one uniquely marked
   dot-source block in the supported profile.
+- The published single-file executable is copied to a content-addressed product version below
+  `%LOCALAPPDATA%\TerminalTranslator\Versions`; the loader never binds a development acceptance
+  artifact as the installed product target.
+- Before exposing the public command, the loader checks `Get-Command tt`. With no collision it creates
+  a TT-owned global alias whose definition is the exact executable path also used by capture
+  maintenance. A non-TT command is preserved and produces one content-free warning.
+- The alias preserves direct native argument, stream, redirection, `$LASTEXITCODE`, and `$?` behavior.
+  A fresh supported PowerShell profile session resolves `tt` without PATH mutation or manual setup.
 - Installation is idempotent and does not replace unrelated profile content.
 - Disabling/uninstall removes only TT-owned artifacts and preserves user changes around the block.
 - Capture purpose is disclosed before enablement; the durable choice prevents per-shell prompting.
@@ -38,11 +46,20 @@ and `-NoProfile` sessions are not promised.
 At prompt completion before the user's next command:
 
 1. Preserve completion/history/interruption facts before TT maintenance changes automatic variables.
-2. Close and flush the current transcript interval with session/sequence boundary metadata.
-3. Validate the candidate; invalid/ambiguous data is not published.
-4. Finalize the completed record and enforce retained capacity.
-5. Start the next transcript interval.
-6. Invoke/return the saved prompt presentation.
+2. Before native process creation, classify the accepted command line. For capture-safe Windows
+   PowerShell 5.1 native commands, use the engine's captured-application-I/O path so its stdout/stderr
+   reader threads join before prompt completion. TTY-sensitive/interactive native applications must
+   instead inherit genuine console stdin/stdout/stderr handles. Preserve the prior PSReadLine
+   `AddToHistoryHandler` and compose it with a managed delegate that classifies after PSReadLine's
+   one-time initialization; do not replace Enter or validation bindings. Retain/reapply the last accepted classification across
+   transcript rotation so PSReadLine's skipped consecutive duplicate-history callback remains safe,
+   and default unknown/indirect invocations to TTY preservation.
+3. For joined-reader commands, synchronously flush twice and require empty transcript queues plus
+   unchanged staging length before stopping the interval.
+4. Close the transcript and validate the candidate; invalid/ambiguous data is not published.
+5. Finalize the completed record and enforce retained capacity.
+6. Start the next transcript interval with joined-reader capture disabled.
+7. Invoke/return the saved prompt presentation.
 
 The `tt last` or `tt ask last` command currently running is not the finalized target it retrieves.
 Finalized contextual TT command records are ineligible as future targets, preventing self-pollution.

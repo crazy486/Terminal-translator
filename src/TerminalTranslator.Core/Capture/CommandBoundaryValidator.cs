@@ -19,6 +19,7 @@ public sealed record CommandBoundaryEvidence(
     public int CommandEchoMatchCount { get; init; } = 1;
     public bool HasUnattributedContentBeforeEcho { get; init; }
     public string? PostCompletionOutput { get; init; }
+    public bool? PowerShellSucceeded { get; init; }
 }
 
 public sealed record BoundaryValidationResult(
@@ -77,7 +78,8 @@ public static class CommandBoundaryValidator
             evidence.CommandText,
             true,
             evidence.ExitCode,
-            evidence.WasInterrupted);
+            evidence.WasInterrupted,
+            evidence.PowerShellSucceeded);
         return new BoundaryValidationResult(true, boundary, evidence.OrderedOutput, null);
     }
 }

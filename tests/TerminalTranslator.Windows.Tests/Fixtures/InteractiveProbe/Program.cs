@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 
 Console.InputEncoding = Encoding.UTF8;
 Console.OutputEncoding = Encoding.UTF8;
@@ -11,6 +12,14 @@ Console.CancelKeyPress += (_, eventArgs) =>
 string scenario = args.FirstOrDefault() ?? "echo";
 switch (scenario)
 {
+    case "tty":
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            stdinTerminal = !Console.IsInputRedirected,
+            stdoutTerminal = !Console.IsOutputRedirected,
+            stderrTerminal = !Console.IsErrorRedirected,
+        }));
+        return 0;
     case "frames":
         Console.Write("ten percent\rcomplete\r\n");
         Console.Write("\u001b[?1049hhidden alternate frame\u001b[?1049l");

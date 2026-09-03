@@ -20,13 +20,52 @@ public enum TranslationErrorCode
     InvalidResponse,
 }
 
+public enum TranslationProviderFailureSource
+{
+    Unspecified,
+    Authorization,
+    Authentication,
+    RateLimit,
+    Network,
+    HttpStatus,
+    Timeout,
+    MalformedResponse,
+}
+
+public sealed record TranslationProviderFailureDetails(
+    TranslationProviderFailureSource Source,
+    int? HttpStatusCode = null,
+    long? ResponseHeadersElapsedMilliseconds = null,
+    long? ResponseCompletedElapsedMilliseconds = null,
+    string? ExceptionType = null,
+    string? CancellationReason = null,
+    string? TimeoutSource = null,
+    string? MalformedResponseReason = null,
+    bool? ReasoningContentPresent = null);
+
 public sealed class TranslationProviderException : Exception
 {
     public TranslationProviderException(TranslationErrorCode code)
-        : base($"Translation provider failed: {code}.") => Code = code;
+        : this(code, null, null)
+    {
+    }
 
     public TranslationProviderException(TranslationErrorCode code, Exception innerException)
-        : base($"Translation provider failed: {code}.", innerException) => Code = code;
+        : this(code, null, innerException)
+    {
+    }
+
+    public TranslationProviderException(
+        TranslationErrorCode code,
+        TranslationProviderFailureDetails? details,
+        Exception? innerException = null)
+        : base($"Translation provider failed: {code}.", innerException)
+    {
+        Code = code;
+        Details = details;
+    }
 
     public TranslationErrorCode Code { get; }
+
+    public TranslationProviderFailureDetails? Details { get; }
 }

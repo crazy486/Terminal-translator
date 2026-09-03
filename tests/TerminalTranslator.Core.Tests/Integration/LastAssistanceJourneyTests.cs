@@ -45,12 +45,105 @@ public sealed class LastAssistanceJourneyTests
         Assert.IsFalse(typeof(LastAssistanceCoordinator).GetMethods().Any(method => method.Name.Contains("ExecuteCommand")));
     }
 
+    [TestMethod]
+    public async Task ExecuteAsync_PreservesProviderFailureLayerForSafeUx()
+    {
+        foreach ((TranslationProviderFailureSource source, AssistanceFailureKind expected) in new[]
+        {
+            (TranslationProviderFailureSource.Network, AssistanceFailureKind.ProviderNetworkFailure),
+            (TranslationProviderFailureSource.HttpStatus, AssistanceFailureKind.ProviderHttpFailure),
+            (TranslationProviderFailureSource.Authentication, AssistanceFailureKind.ProviderHttpFailure),
+            (TranslationProviderFailureSource.RateLimit, AssistanceFailureKind.ProviderHttpFailure),
+            (TranslationProviderFailureSource.MalformedResponse, AssistanceFailureKind.ProviderMalformedResponse),
+        })
+        {
+            TranslationProviderException providerFailure = new(
+                TranslationErrorCode.Unavailable,
+                new TranslationProviderFailureDetails(source));
+
+            LastAssistanceOutcome outcome = await Create(
+                "Failed",
+                1,
+                new ThrowingProvider(providerFailure)).ExecuteAsync(CancellationToken.None);
+
+            Assert.AreEqual(expected, outcome.Failure);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_StrictPreviousCommandDoesNotSkipInterveningLastExitCode()
+    {
+        CapturedCommand native = Captured(1, "cmd /d /c echo", "The package installation completed successfully.", 5);
+        CapturedCommand lastExitCode = Captured(2, "$LASTEXITCODE", "5", null);
+        CapturedCommand contextual = Captured(3, "tt last", "No translatable English content was found.", null, contextual: true);
+        PreviousCommandResult withInterveningCommand = PreviousCommandRetriever.Retrieve(State([
+            native,
+            lastExitCode,
+            contextual,
+        ]));
+        RecordingProvider blockedProvider = new();
+        RecordingPipelineDiagnostics blockedDiagnostics = new();
+
+        LastAssistanceOutcome blocked = await new LastAssistanceCoordinator(
+            () => withInterveningCommand,
+            blockedProvider,
+            new ApprovedAssistanceRequestAuthorizer(),
+            diagnostics: blockedDiagnostics).ExecuteAsync(CancellationToken.None);
+
+        Assert.AreEqual("$LASTEXITCODE", withInterveningCommand.Snapshot!.CommandText);
+        Assert.AreEqual("5", withInterveningCommand.Snapshot.Output);
+        Assert.AreEqual(AssistanceFailureKind.NoTranslatableEnglish, blocked.Failure);
+        Assert.IsEmpty(blockedProvider.Requests);
+        Assert.AreEqual(false, blockedDiagnostics.Items.Single(item =>
+            item.Stage == AssistancePipelineStage.Eligibility).EnglishEligible);
+
+        PreviousCommandResult direct = PreviousCommandRetriever.Retrieve(State([native, contextual]));
+        RecordingProvider directProvider = new();
+        RecordingPipelineDiagnostics directDiagnostics = new();
+        LastAssistanceOutcome sent = await new LastAssistanceCoordinator(
+            () => direct,
+            directProvider,
+            new ApprovedAssistanceRequestAuthorizer(),
+            diagnostics: directDiagnostics).ExecuteAsync(CancellationToken.None);
+
+        Assert.AreEqual(AssistanceFailureKind.None, sent.Failure);
+        Assert.AreEqual(native.Output, directProvider.Requests.Single().Request.SelectedOutput);
+        Assert.AreEqual(true, directDiagnostics.Items.Single(item =>
+            item.Stage == AssistancePipelineStage.Eligibility).EnglishEligible);
+        Assert.AreEqual(
+            System.Text.Encoding.UTF8.GetByteCount(native.Output),
+            directDiagnostics.Items.Single(item => item.Stage == AssistancePipelineStage.Selection).SelectedOutputUtf8Bytes);
+    }
+
     private static LastAssistanceCoordinator Create(string output, int? exitCode, IAssistanceProvider provider) => new(
         () => PreviousCommandResult.Success(new PreviousCommandSnapshot(
             Session, 1, "dotnet build", output, exitCode, false,
             LocalCaptureCompleteness.Complete, System.Text.Encoding.UTF8.GetByteCount(output))),
         provider,
         new ApprovedAssistanceRequestAuthorizer());
+
+    private static CapturedCommand Captured(
+        long sequence,
+        string command,
+        string output,
+        int? nativeExitCode,
+        bool contextual = false) =>
+        new(
+            Session,
+            sequence,
+            command,
+            output,
+            new CommandBoundary(Session, sequence, command, true, nativeExitCode, false),
+            LocalCaptureCompleteness.Complete,
+            System.Text.Encoding.UTF8.GetByteCount(output),
+            contextual);
+
+    private static PreviousCommandRetrievalState State(IReadOnlyList<CapturedCommand> records) => new(
+        CapturePreference.Enabled,
+        CaptureHealthState.Healthy,
+        Session,
+        records,
+        IsStoreReliable: true);
 
     private sealed class RecordingProvider : IAssistanceProvider
     {
@@ -66,5 +159,12 @@ public sealed class LastAssistanceJourneyTests
     {
         public Task<AssistanceResult> CompleteAsync(AuthorizedAssistanceRequest request, CancellationToken cancellationToken) =>
             Task.FromException<AssistanceResult>(failure);
+    }
+
+    private sealed class RecordingPipelineDiagnostics : IAssistancePipelineDiagnosticSink
+    {
+        public List<AssistancePipelineDiagnostic> Items { get; } = [];
+
+        public void Write(AssistancePipelineDiagnostic diagnostic) => Items.Add(diagnostic);
     }
 }

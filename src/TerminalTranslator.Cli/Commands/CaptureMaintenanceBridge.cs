@@ -116,7 +116,20 @@ internal sealed class CaptureMaintenanceBridge(
             values.TryGetValue("history-id", out string? history) ? long.Parse(history, CultureInfo.InvariantCulture) : 0,
             command,
             bool.Parse(Required(values, "succeeded")),
-            values.TryGetValue("native-exit-code", out string? exit) ? int.Parse(exit, CultureInfo.InvariantCulture) : null);
+            values.TryGetValue("native-exit-code", out string? exit) ? int.Parse(exit, CultureInfo.InvariantCulture) : null)
+        {
+            OpeningHistoryId = values.TryGetValue("opening-history-id", out string? openingHistory)
+                ? long.Parse(openingHistory, CultureInfo.InvariantCulture)
+                : 0,
+            IsInitialPrompt = values.TryGetValue("initial-prompt", out string? initialPrompt) &&
+                bool.Parse(initialPrompt),
+            WasInterrupted = values.TryGetValue("was-interrupted", out string? wasInterrupted) &&
+                bool.Parse(wasInterrupted),
+            TranscriptDrainCompleted = values.TryGetValue("transcript-drained", out string? transcriptDrained) &&
+                bool.Parse(transcriptDrained),
+            HasNativeFileRedirection = values.TryGetValue("native-file-redirection", out string? nativeFileRedirection) &&
+                bool.Parse(nativeFileRedirection),
+        };
         CaptureBoundaryProcessingResult result = await new CaptureBoundaryProcessor(_captureRoot).ProcessAsync(
             request,
             preference,
@@ -198,6 +211,11 @@ internal sealed class CaptureMaintenanceBridge(
         if (result.Status != CaptureBoundaryStatus.ReadyForNextInterval || result.NextStagingPath is null)
         {
             await _output.WriteLineAsync($"unavailable={result.FailureReason.ToString().ToLowerInvariant()}").ConfigureAwait(false);
+            if (result.BoundaryFailureDetail != CaptureBoundaryFailureDetail.None)
+            {
+                await _output.WriteLineAsync(
+                    $"boundary-detail={result.BoundaryFailureDetail.ToString().ToLowerInvariant()}").ConfigureAwait(false);
+            }
             return 6;
         }
 

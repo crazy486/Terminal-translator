@@ -63,6 +63,9 @@ public sealed class InlineAssistanceRenderer(TextWriter output)
         AssistanceFailureKind.ConsentMissingOrDeclined => "[tt] External transmission was not authorized; no content was sent.",
         AssistanceFailureKind.SuspectedSecret => "[tt] Suspected sensitive information was detected; no content was sent.",
         AssistanceFailureKind.ProviderTimeout => "[tt] Assistance provider timed out.",
+        AssistanceFailureKind.ProviderNetworkFailure => "[tt] Assistance provider network request failed.",
+        AssistanceFailureKind.ProviderHttpFailure => "[tt] Assistance provider returned an HTTP error.",
+        AssistanceFailureKind.ProviderMalformedResponse => "[tt] Assistance provider returned an invalid response.",
         _ => "[tt] Assistance provider request failed.",
     };
 }

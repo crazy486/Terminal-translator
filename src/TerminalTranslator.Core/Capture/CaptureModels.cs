@@ -67,8 +67,9 @@ public sealed record CommandBoundary
         long sequence,
         string commandText,
         bool isReliable,
-        int? exitCode,
-        bool wasInterrupted)
+        int? nativeExitCode,
+        bool wasInterrupted,
+        bool? powerShellSucceeded = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (sequence <= 0)
@@ -85,15 +86,18 @@ public sealed record CommandBoundary
         Sequence = sequence;
         CommandText = commandText;
         IsReliable = isReliable;
-        ExitCode = exitCode;
+        NativeExitCode = nativeExitCode;
         WasInterrupted = wasInterrupted;
+        PowerShellSucceeded = powerShellSucceeded;
     }
 
     public CaptureSessionId Session { get; }
     public long Sequence { get; }
     public string CommandText { get; }
     public bool IsReliable { get; }
-    public int? ExitCode { get; }
+    public bool? PowerShellSucceeded { get; }
+    public int? NativeExitCode { get; }
+    public int? ExitCode => NativeExitCode;
     public bool WasInterrupted { get; }
 }
 
@@ -155,10 +159,14 @@ public sealed record PreviousCommandSnapshot(
     long Sequence,
     string CommandText,
     string Output,
-    int? ExitCode,
+    int? NativeExitCode,
     bool WasInterrupted,
     LocalCaptureCompleteness LocalCompleteness,
-    long OriginalOutputBytes);
+    long OriginalOutputBytes)
+{
+    public bool? PowerShellSucceeded { get; init; }
+    public int? ExitCode => NativeExitCode;
+}
 
 public sealed record PreviousCommandResult
 {

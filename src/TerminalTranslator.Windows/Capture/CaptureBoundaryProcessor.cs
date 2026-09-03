@@ -11,6 +11,17 @@ public enum CaptureBoundaryStatus
     InvalidAssociation,
 }
 
+public enum CaptureBoundaryFailureDetail
+{
+    None,
+    SessionAssociationMismatch,
+    IntervalStateMismatch,
+    HistoryIdentityMismatch,
+    CommandIdentityMismatch,
+    TranscriptEnvelopeMismatch,
+    BoundaryReliabilityRejected,
+}
+
 public sealed record CaptureBoundaryRequest(
     Guid SessionId,
     string Nonce,
@@ -20,13 +31,21 @@ public sealed record CaptureBoundaryRequest(
     long HistoryId,
     string? CommandText,
     bool Succeeded,
-    int? NativeExitCode);
+    int? NativeExitCode)
+{
+    public long OpeningHistoryId { get; init; }
+    public bool IsInitialPrompt { get; init; }
+    public bool WasInterrupted { get; init; }
+    public bool TranscriptDrainCompleted { get; init; } = true;
+    public bool HasNativeFileRedirection { get; init; }
+}
 
 public sealed record CaptureBoundaryProcessingResult(
     CaptureBoundaryStatus Status,
     string? NextStagingPath,
     CaptureFailureReason FailureReason,
-    CaptureHealthNotification Notification);
+    CaptureHealthNotification Notification,
+    CaptureBoundaryFailureDetail BoundaryFailureDetail = CaptureBoundaryFailureDetail.None);
 
 public sealed class CaptureBoundaryProcessor
 {
@@ -62,7 +81,10 @@ public sealed class CaptureBoundaryProcessor
                 request.DirectOwner,
                 request.IntegrationVersion))
         {
-            return Unavailable(CaptureBoundaryStatus.InvalidAssociation, CaptureFailureReason.Boundary);
+            return Unavailable(
+                CaptureBoundaryStatus.InvalidAssociation,
+                CaptureFailureReason.Boundary,
+                CaptureBoundaryFailureDetail.SessionAssociationMismatch);
         }
 
         if (preference != CapturePreference.Enabled)
@@ -84,23 +106,79 @@ public sealed class CaptureBoundaryProcessor
 
         long sequence = manifest.NextSequence;
         string expectedStagingPath = CaptureSessionBootstrap.GetStagingPath(sessionDirectory, sequence);
+        CaptureCompletionDiagnostics.Write("boundary-start", request.SessionId, sequence, new
+        {
+            transcriptDrained = request.TranscriptDrainCompleted,
+            stagingLength = TryGetFileLength(request.StagingPath),
+            nativeExitCode = request.NativeExitCode,
+            hasNativeFileRedirection = request.HasNativeFileRedirection,
+            historyId = request.HistoryId,
+            openingHistoryId = request.OpeningHistoryId,
+            initialPrompt = request.IsInitialPrompt,
+        });
         if (!string.Equals(Path.GetFullPath(request.StagingPath), Path.GetFullPath(expectedStagingPath), StringComparison.OrdinalIgnoreCase))
         {
             await MarkHealthAsync(sessionDirectory, manifest, CaptureHealthState.Unavailable, cancellationToken).ConfigureAwait(false);
-            return Unavailable(CaptureBoundaryStatus.InvalidAssociation, CaptureFailureReason.Boundary);
+            return Unavailable(
+                CaptureBoundaryStatus.InvalidAssociation,
+                CaptureFailureReason.Boundary,
+                CaptureBoundaryFailureDetail.IntervalStateMismatch);
         }
 
-        if (string.IsNullOrWhiteSpace(request.CommandText) || request.HistoryId <= 0)
+        if (request.IsInitialPrompt)
+        {
+            if (!string.IsNullOrWhiteSpace(request.CommandText))
+            {
+                await MarkHealthAsync(sessionDirectory, manifest, CaptureHealthState.Unavailable, cancellationToken).ConfigureAwait(false);
+                return Unavailable(
+                    CaptureBoundaryStatus.Unavailable,
+                    CaptureFailureReason.Boundary,
+                    CaptureBoundaryFailureDetail.HistoryIdentityMismatch);
+            }
+
+            TryDeleteFile(request.StagingPath);
+            await PrepareNextIntervalAsync(sessionDirectory, manifest, sequence, cancellationToken).ConfigureAwait(false);
+            return Ready(sessionDirectory, sequence);
+        }
+
+        if (request.OpeningHistoryId < 0 || request.HistoryId < 0 || request.HistoryId < request.OpeningHistoryId)
+        {
+            await MarkHealthAsync(sessionDirectory, manifest, CaptureHealthState.Unavailable, cancellationToken).ConfigureAwait(false);
+            return Unavailable(
+                CaptureBoundaryStatus.Unavailable,
+                CaptureFailureReason.Boundary,
+                CaptureBoundaryFailureDetail.HistoryIdentityMismatch);
+        }
+
+        long historyDelta = request.HistoryId - request.OpeningHistoryId;
+        if (historyDelta == 0 && string.IsNullOrWhiteSpace(request.CommandText))
         {
             TryDeleteFile(request.StagingPath);
             await PrepareNextIntervalAsync(sessionDirectory, manifest, sequence, cancellationToken).ConfigureAwait(false);
             return Ready(sessionDirectory, sequence);
         }
 
+        if (historyDelta != 1 || string.IsNullOrWhiteSpace(request.CommandText))
+        {
+            await MarkHealthAsync(sessionDirectory, manifest, CaptureHealthState.Unavailable, cancellationToken).ConfigureAwait(false);
+            return Unavailable(
+                CaptureBoundaryStatus.Unavailable,
+                CaptureFailureReason.Boundary,
+                CaptureBoundaryFailureDetail.HistoryIdentityMismatch);
+        }
+
         StableTranscriptSnapshotResult snapshot = await StableTranscriptSnapshot.AcquireAsync(
             request.StagingPath,
             TimeSpan.FromMilliseconds(500),
+            producerCompleted: () => request.TranscriptDrainCompleted,
             cancellationToken: cancellationToken).ConfigureAwait(false);
+        CaptureCompletionDiagnostics.Write("snapshot-acquired", request.SessionId, sequence, new
+        {
+            stable = snapshot.IsStable,
+            snapshotLength = snapshot.Length,
+            stagingLength = TryGetFileLength(request.StagingPath),
+            transcriptDrained = request.TranscriptDrainCompleted,
+        });
         if (!snapshot.IsStable || !await snapshot.MatchesFileAsync(request.StagingPath, cancellationToken).ConfigureAwait(false))
         {
             await MarkHealthAsync(sessionDirectory, manifest, CaptureHealthState.Unavailable, cancellationToken).ConfigureAwait(false);
@@ -120,11 +198,25 @@ public sealed class CaptureBoundaryProcessor
             return Unavailable(CaptureBoundaryStatus.Unavailable, CaptureFailureReason.Snapshot);
         }
 
-        if (!TryExtractOrderedOutput(transcript, request.CommandText, out string output))
+        if (!PowerShellTranscriptEnvelopeParser.TryExtractOrderedOutput(
+                transcript,
+                request.CommandText,
+                request.HasNativeFileRedirection,
+                out string output,
+                out CaptureBoundaryFailureDetail extractionFailure))
         {
             await MarkHealthAsync(sessionDirectory, manifest, CaptureHealthState.Unavailable, cancellationToken).ConfigureAwait(false);
-            return Unavailable(CaptureBoundaryStatus.Unavailable, CaptureFailureReason.Boundary);
+            return Unavailable(
+                CaptureBoundaryStatus.Unavailable,
+                CaptureFailureReason.Boundary,
+                extractionFailure);
         }
+        CaptureCompletionDiagnostics.Write("transcript-extracted", request.SessionId, sequence, new
+        {
+            snapshotLength = snapshot.Length,
+            extractedOutputLength = Encoding.UTF8.GetByteCount(output),
+            nativeExitCode = request.NativeExitCode,
+        });
 
         CaptureSessionId session = new(request.SessionId, request.Nonce);
         CommandBoundaryEvidence evidence = new(
@@ -139,14 +231,20 @@ public sealed class CaptureBoundaryProcessor
             request.CommandText,
             request.CommandText,
             output,
-            request.NativeExitCode ?? (request.Succeeded ? 0 : 1),
-            WasInterrupted: false,
-            TerminationBoundaryReliable: true);
+            request.NativeExitCode,
+            WasInterrupted: request.WasInterrupted,
+            TerminationBoundaryReliable: true)
+        {
+            PowerShellSucceeded = request.Succeeded,
+        };
         BoundaryValidationResult validation = CommandBoundaryValidator.Validate(evidence);
         if (!validation.IsReliable)
         {
             await MarkHealthAsync(sessionDirectory, manifest, CaptureHealthState.Unavailable, cancellationToken).ConfigureAwait(false);
-            return Unavailable(CaptureBoundaryStatus.Unavailable, CaptureFailureReason.Boundary);
+            return Unavailable(
+                CaptureBoundaryStatus.Unavailable,
+                CaptureFailureReason.Boundary,
+                CaptureBoundaryFailureDetail.BoundaryReliabilityRejected);
         }
 
         CapturedCommand command = new(
@@ -157,7 +255,8 @@ public sealed class CaptureBoundaryProcessor
             validation.Boundary!,
             LocalCaptureCompleteness.Complete,
             Encoding.UTF8.GetByteCount(validation.OrderedOutput ?? string.Empty),
-            ContextualCommandSelection.IsContextual(request.CommandText),
+            ContextualInvocationMarker.IsMarked(sessionDirectory, sequence) ||
+                ContextualCommandSelection.IsContextual(request.CommandText),
             request.HistoryId);
         byte[] metadata = RetainedCommandRecordCodec.SerializeMetadata(command);
         CapturedCommandCandidate candidate = new(
@@ -169,6 +268,13 @@ public sealed class CaptureBoundaryProcessor
             command);
         CapturedCommandFinalizer finalizer = new(new RetainedCaptureStore(sessionDirectory), residue);
         FinalizationResult finalized = await finalizer.FinalizeAsync(candidate, cancellationToken).ConfigureAwait(false);
+        CaptureCompletionDiagnostics.Write("record-finalized", request.SessionId, sequence, new
+        {
+            outcome = finalized.Outcome.ToString(),
+            publishedSnapshotLength = snapshot.Length,
+            retainedOutputLength = candidate.Content.LongLength,
+            nativeExitCode = request.NativeExitCode,
+        });
         if (finalized.Outcome != FinalizationOutcome.Published)
         {
             await MarkHealthAsync(sessionDirectory, manifest, CaptureHealthState.Unavailable, cancellationToken).ConfigureAwait(false);
@@ -187,6 +293,7 @@ public sealed class CaptureBoundaryProcessor
         }
 
         long nextSequence = checked(sequence + 1);
+        ContextualInvocationMarker.TryDelete(sessionDirectory, sequence);
         await PrepareNextIntervalAsync(sessionDirectory, manifest, nextSequence, cancellationToken).ConfigureAwait(false);
         return Ready(sessionDirectory, nextSequence);
     }
@@ -246,33 +353,17 @@ public sealed class CaptureBoundaryProcessor
         }
     }
 
-    private static bool TryExtractOrderedOutput(string transcript, string commandText, out string output)
-    {
-        output = string.Empty;
-        int commandStart = transcript.IndexOf(commandText, StringComparison.Ordinal);
-        if (commandStart < 0 || transcript.IndexOf(commandText, commandStart + commandText.Length, StringComparison.Ordinal) >= 0)
-        {
-            return false;
-        }
-
-        int outputStart = commandStart + commandText.Length;
-        string tail = transcript[outputStart..].TrimStart('\r', '\n');
-        int footer = tail.IndexOf("Windows PowerShell transcript end", StringComparison.OrdinalIgnoreCase);
-        if (footer >= 0)
-        {
-            int stars = tail.LastIndexOf("**********************", footer, StringComparison.Ordinal);
-            tail = tail[..(stars >= 0 ? stars : footer)];
-        }
-
-        output = tail.TrimEnd('\r', '\n');
-        return true;
-    }
-
     private static string DecodeTranscript(byte[] bytes)
     {
         using MemoryStream stream = new(bytes, writable: false);
         using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         return reader.ReadToEnd();
+    }
+
+    private static long? TryGetFileLength(string path)
+    {
+        try { return File.Exists(path) ? new FileInfo(path).Length : null; }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return null; }
     }
 
     private static async Task PrepareNextIntervalAsync(
@@ -312,11 +403,15 @@ public sealed class CaptureBoundaryProcessor
         CaptureFailureReason.None,
         notification);
 
-    private static CaptureBoundaryProcessingResult Unavailable(CaptureBoundaryStatus status, CaptureFailureReason reason) => new(
+    private static CaptureBoundaryProcessingResult Unavailable(
+        CaptureBoundaryStatus status,
+        CaptureFailureReason reason,
+        CaptureBoundaryFailureDetail boundaryFailureDetail = CaptureBoundaryFailureDetail.None) => new(
         status,
         null,
         reason,
-        CaptureHealthNotification.CaptureUnavailable);
+        CaptureHealthNotification.CaptureUnavailable,
+        boundaryFailureDetail);
 
     private static void TryDeleteFile(string path)
     {

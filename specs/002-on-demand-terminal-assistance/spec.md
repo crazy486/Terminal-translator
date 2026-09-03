@@ -175,6 +175,10 @@ lifecycle, access, messages, and fail-open/fail-closed behavior.
    association is wrong or unknown, or previous output cannot be recovered reliably, **When**
    `tt last` is invoked, **Then** it reports `[tt] Previous command output could not be recovered
    reliably.`, sends no guessed text, and continues to leave the shell usable.
+10. **Given** capture is active and the user launches a TTY-sensitive native application such as
+    Codex, **When** that process is created, **Then** stdin, stdout, and stderr remain genuine terminal
+    handles and the application launches normally, while later capture-safe native commands retain
+    reliable joined-reader capture.
 
 ---
 
@@ -395,6 +399,17 @@ protected content is transmitted and every blocked request produces a clear noti
 - **FR-033**: Local capture truncation and AI input truncation MUST remain distinct states with
   distinct user notices. If both apply to one assistance request, both states MUST be preserved and
   disclosed.
+- **FR-034**: Capture integration MUST decide before native process creation whether a command is
+  capture-safe or TTY-sensitive. TTY-sensitive/interactive native applications MUST inherit genuine
+  terminal stdin/stdout/stderr handles; capture-safe native commands MUST retain T133's reliable
+  joined-reader completion behavior. The decision MUST NOT use arbitrary delays or globally disable
+  the completion invariant.
+- **FR-035**: DeepSeek Chat Completions requests for Terminal Translator's latency-sensitive
+  translation and brief-assistance workloads MUST explicitly disable thinking. Requests whose
+  provider adapter contract requires structured JSON MUST also select API JSON Output while keeping
+  the prompt's explicit JSON instruction. Plain-text translation requests MUST NOT be relabeled as a
+  JSON contract. This profile change MUST NOT add a generation-token limit, streaming, retry, or a
+  second timeout authority.
 
 ### Scope Boundaries
 
@@ -416,8 +431,9 @@ protected content is transmitted and every blocked request produces a clear noti
   or user-facing capture display/export.
 - PowerShell 7, cmd.exe, bash/WSL, third-party terminals, legacy ConsoleHost-only environments,
   Linux, or macOS compatibility promises.
-- Complete capture fidelity for Codex interactive TUI, Vim, full-screen applications, REPLs,
-  continuously redrawing programs, or arbitrary ANSI screen reconstruction.
+- Complete capture/reconstruction fidelity for Codex interactive TUI, Vim, full-screen applications,
+  REPLs, continuously redrawing programs, or arbitrary ANSI screen state. Their genuine console-handle
+  semantics are nevertheless in scope and must not be broken by capture.
 - Automatic execution of generated commands or changes, redesign of Feature 001 live mode,
   speculative shared-pipeline refactoring, or new provider models solely for this feature.
 
@@ -496,6 +512,9 @@ protected content is transmitted and every blocked request produces a clear noti
   includes no capture or previous-command content unless the user chose the `last` subcommand.
 - **SC-012**: Across all generated-command acceptance tests, zero AI-generated commands, fixes,
   confirmations, or file changes are automatically executed or applied.
+- **SC-013**: In the permanent TTY probe and installed Codex acceptance, stdin, stdout, and stderr are
+  terminals and the TUI starts; in the immediately following capture-safe native cases, stdout/stderr,
+  exit status, and file-only redirection retain their specified behavior.
 
 ## Assumptions
 

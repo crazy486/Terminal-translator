@@ -29,7 +29,7 @@ public sealed class AssistancePrivacyGateTests
     [TestMethod]
     public void TextualTerminationMetadata_IsPartOfTheExactScreenedPayload()
     {
-        SecretDetector detector = new(text => text.Contains("exitCode=42", StringComparison.Ordinal)
+        SecretDetector detector = new(text => text.Contains("nativeExitCode=42", StringComparison.Ordinal)
             ? PrivacyReasonCode.CredentialAssignment
             : null);
         AssistanceRequest request = AssistanceRequest.CreateLastTranslation(

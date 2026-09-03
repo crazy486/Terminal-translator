@@ -29,4 +29,11 @@ public sealed class WholeOutputEligibilityTests
         })
             Assert.IsFalse(WholeOutputEligibility.HasTranslatableEnglish(technical), technical);
     }
+
+    [TestMethod]
+    public void GitLikeEnglishWithTechnicalTokensIsEligibleAsAWhole()
+    {
+        const string output = "On branch test\nChanges not staged for commit:\n  (use \"git add <file>...\" to update what will be committed)";
+        Assert.IsTrue(WholeOutputEligibility.HasTranslatableEnglish(output));
+    }
 }

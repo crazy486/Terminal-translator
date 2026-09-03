@@ -13,16 +13,19 @@ public sealed class OnDemandAssistanceRuntimeComposition
     private readonly Func<ProviderSettings, IAssistanceProvider> _providerFactory;
     private readonly Func<ProviderSettings, IAssistanceRequestAuthorizer> _authorizerFactory;
     private readonly Lazy<Func<CancellationToken, Task<PreviousCommandResult>>> _contextualRetriever;
+    private readonly IAssistancePipelineDiagnosticSink _pipelineDiagnostics;
 
     public OnDemandAssistanceRuntimeComposition(
         Func<CancellationToken, Task<ProviderSettings?>> settingsLoader,
         Func<ProviderSettings, IAssistanceProvider> providerFactory,
         Func<ProviderSettings, IAssistanceRequestAuthorizer> authorizerFactory,
-        Func<Func<CancellationToken, Task<PreviousCommandResult>>> contextualRetrieverFactory)
+        Func<Func<CancellationToken, Task<PreviousCommandResult>>> contextualRetrieverFactory,
+        IAssistancePipelineDiagnosticSink? pipelineDiagnostics = null)
     {
         _settingsLoader = settingsLoader ?? throw new ArgumentNullException(nameof(settingsLoader));
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));
         _authorizerFactory = authorizerFactory ?? throw new ArgumentNullException(nameof(authorizerFactory));
+        _pipelineDiagnostics = pipelineDiagnostics ?? NullAssistancePipelineDiagnosticSink.Instance;
         ArgumentNullException.ThrowIfNull(contextualRetrieverFactory);
         _contextualRetriever = new Lazy<Func<CancellationToken, Task<PreviousCommandResult>>>(
             contextualRetrieverFactory,
@@ -36,7 +39,16 @@ public sealed class OnDemandAssistanceRuntimeComposition
         {
             AllowAutoRedirect = false,
             UseCookies = false,
-        });
+        })
+        {
+            Timeout = Timeout.InfiniteTimeSpan,
+        };
+        IProviderRequestDiagnosticSink diagnosticSink = JsonProviderRequestDiagnosticSink.Create(
+            Console.Error,
+            Environment.GetEnvironmentVariable);
+        IAssistancePipelineDiagnosticSink pipelineDiagnosticSink = JsonAssistancePipelineDiagnosticSink.Create(
+            Console.Error,
+            Environment.GetEnvironmentVariable);
         SecretDetector secretDetector = new();
         AssistancePrivacyGate privacyGate = new(secretDetector);
         ProviderConsentGrantStore grantStore = new();
@@ -46,7 +58,9 @@ public sealed class OnDemandAssistanceRuntimeComposition
             settings => new ChatCompletionAssistanceProvider(
                 settings,
                 httpClient,
-                Environment.GetEnvironmentVariable),
+                Environment.GetEnvironmentVariable,
+                AssistanceRequestVariableInputSerializer.Serialize,
+                diagnosticSink),
             settings => new AssistanceConsentPrompt(
                 settings,
                 grantStore,
@@ -72,17 +86,26 @@ public sealed class OnDemandAssistanceRuntimeComposition
                         return (success, owner);
                     });
                 return retriever.RetrieveAsync;
-            });
+            },
+            pipelineDiagnosticSink);
     }
 
     public async Task<LastAssistanceOutcome> ExecuteLastAsync(CancellationToken cancellationToken)
     {
+        return await ExecuteLastAsync(null, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<LastAssistanceOutcome> ExecuteLastAsync(
+        IProviderActivity? providerActivity,
+        CancellationToken cancellationToken)
+    {
         DeferredRuntimeLeaves leaves = new(CreateLeavesAsync);
         LastAssistanceCoordinator coordinator = new(
             _contextualRetriever.Value,
-            new DeferredProvider(leaves),
+            new DeferredProvider(leaves, providerActivity),
             new DeferredAuthorizer(leaves),
-            adapterCapabilityBytes: ChatCompletionAssistanceProvider.DefaultVariableInputBytes);
+            adapterCapabilityBytes: ChatCompletionAssistanceProvider.DefaultVariableInputBytes,
+            diagnostics: _pipelineDiagnostics);
         return await coordinator.ExecuteAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -157,7 +180,9 @@ public sealed class OnDemandAssistanceRuntimeComposition
         }
     }
 
-    private sealed class DeferredProvider(DeferredRuntimeLeaves leaves) : IAssistanceProvider
+    private sealed class DeferredProvider(
+        DeferredRuntimeLeaves leaves,
+        IProviderActivity? activity = null) : IAssistanceProvider
     {
         public async Task<AssistanceResult> CompleteAsync(
             AuthorizedAssistanceRequest request,
@@ -167,7 +192,11 @@ public sealed class OnDemandAssistanceRuntimeComposition
             if (resolved is null)
                 throw new TerminalTranslator.Core.Translation.TranslationProviderException(
                     TerminalTranslator.Core.Translation.TranslationErrorCode.Authentication);
-            return await resolved.Provider.CompleteAsync(request, cancellationToken).ConfigureAwait(false);
+            return activity is null
+                ? await resolved.Provider.CompleteAsync(request, cancellationToken).ConfigureAwait(false)
+                : await activity.RunAsync(
+                    token => resolved.Provider.CompleteAsync(request, token),
+                    cancellationToken).ConfigureAwait(false);
         }
     }
 }

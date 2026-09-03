@@ -1,4 +1,5 @@
 using System.CommandLine;
+using TerminalTranslator.Windows.Capture;
 
 namespace TerminalTranslator.Cli.Commands;
 
@@ -6,6 +7,11 @@ public static class CommandFactory
 {
     public static async Task<int> InvokeAsync(string[] args, CancellationToken cancellationToken = default)
     {
+        if (ContextualInvocationMarker.IsContextualInvocation(args))
+        {
+            await ContextualInvocationMarker.TryMarkCurrentAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+        }
+
         ParseResult parseResult = CreateRootCommand().Parse(args);
         if (parseResult.Errors.Count > 0)
         {
@@ -26,7 +32,8 @@ public static class CommandFactory
         root.Add(OffCommand.Create());
         root.Add(StatusCommand.Create());
 
-        root.Add(LastCommand.Create(onDemand.ExecuteLastAsync));
+        root.Add(LastCommand.Create(
+            (activity, cancellationToken) => onDemand.ExecuteLastAsync(activity, cancellationToken)));
         root.Add(AskCommand.Create(
             onDemand.ExecuteQuestionAsync,
             contextualExecutorFactory: () => onDemand.ExecuteLastQuestionAsync));

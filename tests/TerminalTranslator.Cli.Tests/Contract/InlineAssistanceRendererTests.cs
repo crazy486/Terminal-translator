@@ -56,6 +56,9 @@ public sealed class InlineAssistanceRendererTests
             [AssistanceFailureKind.CaptureUnavailable] = "[tt] Capture is unavailable.",
             [AssistanceFailureKind.UnreliableOrCorrupt] = "[tt] Previous command output could not be recovered reliably.",
             [AssistanceFailureKind.ProviderTimeout] = "[tt] Assistance provider timed out.",
+            [AssistanceFailureKind.ProviderNetworkFailure] = "[tt] Assistance provider network request failed.",
+            [AssistanceFailureKind.ProviderHttpFailure] = "[tt] Assistance provider returned an HTTP error.",
+            [AssistanceFailureKind.ProviderMalformedResponse] = "[tt] Assistance provider returned an invalid response.",
             [AssistanceFailureKind.ProviderError] = "[tt] Assistance provider request failed.",
             [AssistanceFailureKind.NoTranslatableEnglish] = "No translatable English content was found.",
         };

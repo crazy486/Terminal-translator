@@ -3,6 +3,7 @@ using TerminalTranslator.Cli.Configuration;
 using TerminalTranslator.Cli.Tests.TestDoubles;
 using TerminalTranslator.Core.Assistance;
 using TerminalTranslator.Core.Capture;
+using TerminalTranslator.Core.Translation;
 using TerminalTranslator.Windows.Capture;
 
 namespace TerminalTranslator.Cli.Tests.Integration;
@@ -145,6 +146,99 @@ public sealed class ProductionCommandCompositionTests
         Assert.AreEqual("English compiler failure", provider.Requests.Single().Request.SelectedOutput);
     }
 
+    [TestMethod]
+    public async Task ProductionTranscriptPath_LastSendsExactlyCleanedCommandOutputToFakeProvider()
+    {
+        using TemporaryDirectory temporary = new();
+        const string commandText = "Write-Output \"The package installation completed successfully.\"";
+        const string commandOutput = "The package installation completed successfully.";
+        (CapturePreferenceStore preference, string captureRoot, CaptureSessionProof proof, CaptureOwnerIdentity owner) =
+            await FinalizeTranscriptAsync(temporary.Path, commandText, commandOutput);
+        RecordingAssistanceProvider provider = new();
+        ProductionPreviousCommandRetriever retriever = CreateProductionRetriever(preference, captureRoot, proof, owner);
+        OnDemandAssistanceRuntimeComposition composition = Composition(provider, () => retriever.RetrieveAsync);
+
+        Assert.AreEqual(0, await CommandFactory.CreateRootCommand(composition).Parse(["last"]).InvokeAsync());
+
+        AuthorizedAssistanceRequest sent = provider.Requests.Single();
+        Assert.AreEqual(commandOutput, sent.Request.SelectedOutput);
+        Assert.IsFalse(sent.Request.SelectedOutput.Contains("脚本结束", StringComparison.Ordinal));
+        Assert.IsFalse(sent.Request.SelectedOutput.Contains("20260829175932", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task ProductionTranscriptPath_ZeroOutputReturnsNoOutputAndNeverFallsBackOrCallsProvider()
+    {
+        using TemporaryDirectory temporary = new();
+        const string commandText = "Set-Location ..";
+        (CapturePreferenceStore preference, string captureRoot, CaptureSessionProof proof, CaptureOwnerIdentity owner) =
+            await FinalizeTranscriptAsync(temporary.Path, commandText, string.Empty);
+        ProductionPreviousCommandRetriever retriever = CreateProductionRetriever(preference, captureRoot, proof, owner);
+        RejectIfCalledAssistanceProvider provider = new();
+        OnDemandAssistanceRuntimeComposition composition = Composition(provider, () => retriever.RetrieveAsync);
+
+        LastAssistanceOutcome outcome = await composition.ExecuteLastAsync(CancellationToken.None);
+
+        Assert.AreEqual(AssistanceFailureKind.NoOutput, outcome.Failure);
+        Assert.IsNull(outcome.Request);
+    }
+
+    [TestMethod]
+    [DataRow(
+        "Get-Item \"Z:\\TT_DEFINITELY_MISSING_002\"",
+        "Get-Item : Cannot find drive.\r\n+ Get-Item \"Z:\\TT_DEFINITELY_MISSING_002\"\r\n    + CategoryInfo : ObjectNotFound\r\n    + FullyQualifiedErrorId : DriveNotFound,Microsoft.PowerShell.Commands.GetItemCommand")]
+    [DataRow(
+        "native-stream-probe",
+        "The native command completed successfully.\r\nThe native command reported a recoverable warning.")]
+    [DataRow(
+        "git status",
+        "On branch test\r\nChanges not staged for commit:\r\n  (use \"git add <file>...\" to update what will be committed)")]
+    public async Task ProductionTranscriptPath_ErrorNativeAndGitLikeOutputReachAuthorizedProviderUnchanged(
+        string commandText,
+        string commandOutput)
+    {
+        using TemporaryDirectory temporary = new();
+        (CapturePreferenceStore preference, string captureRoot, CaptureSessionProof proof, CaptureOwnerIdentity owner) =
+            await FinalizeTranscriptAsync(temporary.Path, commandText, commandOutput);
+        RecordingAssistanceProvider provider = new();
+        ProductionPreviousCommandRetriever retriever = CreateProductionRetriever(preference, captureRoot, proof, owner);
+        OnDemandAssistanceRuntimeComposition composition = Composition(provider, () => retriever.RetrieveAsync);
+
+        LastAssistanceOutcome outcome = await composition.ExecuteLastAsync(CancellationToken.None);
+
+        Assert.AreEqual(AssistanceFailureKind.None, outcome.Failure);
+        Assert.AreEqual(commandOutput, provider.Requests.Single().Request.SelectedOutput);
+    }
+
+    [TestMethod]
+    public async Task TtLastTimeoutExitFive_CannotPolluteFollowingCmdletAuthorizedPayload()
+    {
+        OnDemandAssistanceRuntimeComposition timeout = Composition(
+            new TimeoutProvider(),
+            () => _ => Task.FromResult(PreviousCommandResult.Success(Snapshot())));
+        Assert.AreEqual(5, await CommandFactory.CreateRootCommand(timeout).Parse(["last"]).InvokeAsync());
+
+        using TemporaryDirectory temporary = new();
+        const string command = "Write-Output \"The package installation completed successfully.\"";
+        const string output = "The package installation completed successfully.";
+        (CapturePreferenceStore preference, string captureRoot, CaptureSessionProof proof, CaptureOwnerIdentity owner) =
+            await FinalizeTranscriptAsync(temporary.Path, command, output);
+        RecordingAssistanceProvider provider = new();
+        ProductionPreviousCommandRetriever retriever = CreateProductionRetriever(preference, captureRoot, proof, owner);
+        LastAssistanceOutcome outcome = await Composition(provider, () => retriever.RetrieveAsync)
+            .ExecuteLastAsync(CancellationToken.None);
+
+        Assert.AreEqual(AssistanceFailureKind.None, outcome.Failure);
+        AuthorizedAssistanceRequest sent = provider.Requests.Single();
+        Assert.IsTrue(sent.Request.Termination.PowerShellSucceeded);
+        Assert.IsNull(sent.Request.Termination.NativeExitCode);
+        string serialized = AssistanceRequestVariableInputSerializer.Serialize(sent.Request);
+        StringAssert.Contains(serialized, "powerShellSucceeded=true");
+        StringAssert.Contains(serialized, "nativeExitCode=unknown");
+        Assert.IsFalse(serialized.Contains("nativeExitCode=5", StringComparison.Ordinal));
+        sent.AssertValid();
+    }
+
     private static OnDemandAssistanceRuntimeComposition Composition(
         IAssistanceProvider provider,
         Func<Func<CancellationToken, Task<PreviousCommandResult>>> retrieverFactory) => new(
@@ -169,12 +263,82 @@ public sealed class ProductionCommandCompositionTests
         LocalCaptureCompleteness.Complete,
         System.Text.Encoding.UTF8.GetByteCount(output));
 
+    private static async Task<(CapturePreferenceStore Preference, string CaptureRoot, CaptureSessionProof Proof, CaptureOwnerIdentity Owner)>
+        FinalizeTranscriptAsync(string root, string commandText, string commandOutput)
+    {
+        string settingsDirectory = Path.Combine(root, "settings");
+        string captureRoot = Path.Combine(root, "capture");
+        CapturePreferenceStore preference = new(settingsDirectory);
+        await preference.SaveAsync(CapturePreference.Enabled);
+        CaptureOwnerIdentity owner = new("S-1-5-21-production-envelope", 4242, 638917344000000000);
+        CaptureBootstrapResult bootstrap = await new CaptureSessionBootstrap(captureRoot).InitializeAsync(
+            CapturePreference.Enabled,
+            owner,
+            CaptureSessionBootstrap.CurrentIntegrationVersion,
+            isHostedFeature001Session: false);
+        const string separator = "**********************";
+        string outputLine = commandOutput.Length == 0 ? string.Empty : commandOutput + "\r\n";
+        string transcript = string.Join("\r\n",
+            separator,
+            "Windows PowerShell 脚本开始",
+            "开始时间: 20260829175900",
+            "用户名: test",
+            separator,
+            $"CUSTOM> {commandText}",
+            outputLine + separator,
+            "Windows PowerShell 脚本结束",
+            "结束时间: 20260829175932",
+            separator,
+            string.Empty);
+        await File.WriteAllTextAsync(bootstrap.StagingPath!, transcript);
+        CaptureBoundaryProcessingResult result = await new CaptureBoundaryProcessor(captureRoot).ProcessAsync(
+            new CaptureBoundaryRequest(
+                bootstrap.Proof!.SessionId,
+                bootstrap.Proof.Nonce,
+                owner,
+                CaptureSessionBootstrap.CurrentIntegrationVersion,
+                bootstrap.StagingPath!,
+                1,
+                commandText,
+                Succeeded: true,
+                NativeExitCode: null),
+            CapturePreference.Enabled);
+        Assert.AreEqual(CaptureBoundaryStatus.ReadyForNextInterval, result.Status);
+        return (preference, captureRoot, bootstrap.Proof, owner);
+    }
+
+    private static ProductionPreviousCommandRetriever CreateProductionRetriever(
+        CapturePreferenceStore preference,
+        string captureRoot,
+        CaptureSessionProof proof,
+        CaptureOwnerIdentity owner)
+    {
+        Dictionary<string, string> environment = new()
+        {
+            [CaptureSessionIdentity.SessionEnvironmentVariable] = proof.SessionId.ToString("N"),
+            [CaptureSessionIdentity.NonceEnvironmentVariable] = proof.Nonce,
+        };
+        return new ProductionPreviousCommandRetriever(
+            preference,
+            captureRoot,
+            name => environment.GetValueOrDefault(name),
+            () => (true, owner));
+    }
+
     private sealed class DenyingAuthorizer : IAssistanceRequestAuthorizer
     {
         public Task<AssistanceAuthorizationDecision> AuthorizeAsync(
             AssistanceRequest request,
             CancellationToken cancellationToken) =>
             Task.FromResult(AssistanceAuthorizationDecision.Denied());
+    }
+
+    private sealed class TimeoutProvider : IAssistanceProvider
+    {
+        public Task<AssistanceResult> CompleteAsync(
+            AuthorizedAssistanceRequest request,
+            CancellationToken cancellationToken) =>
+            Task.FromException<AssistanceResult>(new TranslationProviderException(TranslationErrorCode.Timeout));
     }
 
     private sealed class TemporaryDirectory : IDisposable

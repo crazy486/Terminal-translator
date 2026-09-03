@@ -20,6 +20,26 @@ public sealed class CommandBoundaryValidatorTests
     }
 
     [TestMethod]
+    public void Validate_PreservesIndependentPowerShellAndNativeTerminationFacts()
+    {
+        BoundaryValidationResult cmdlet = CommandBoundaryValidator.Validate(CreateEvidence() with
+        {
+            ExitCode = null,
+            PowerShellSucceeded = true,
+        });
+        Assert.IsTrue(cmdlet.Boundary!.PowerShellSucceeded);
+        Assert.IsNull(cmdlet.Boundary.NativeExitCode);
+
+        BoundaryValidationResult native = CommandBoundaryValidator.Validate(CreateEvidence() with
+        {
+            ExitCode = 5,
+            PowerShellSucceeded = false,
+        });
+        Assert.IsFalse(native.Boundary!.PowerShellSucceeded);
+        Assert.AreEqual(5, native.Boundary.NativeExitCode);
+    }
+
+    [TestMethod]
     public void Validate_RejectsMissingOrMismatchedSessionSequenceAndEcho()
     {
         Assert.IsFalse(CommandBoundaryValidator.Validate(CreateEvidence() with { HasClosingBoundary = false }).IsReliable);

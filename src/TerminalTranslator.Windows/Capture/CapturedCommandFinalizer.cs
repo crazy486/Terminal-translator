@@ -114,6 +114,14 @@ public sealed class CapturedCommandFinalizer(
         }
         catch (RetainedPublicationException exception)
         {
+            CaptureCompletionDiagnostics.Write("retention-failure", Guid.Empty, candidate.Sequence, new
+            {
+                failureType = exception.GetType().Name,
+                innerFailureType = exception.InnerException?.GetType().Name,
+                hResult = exception.HResult,
+                commitOccurred = exception.CommitOccurred,
+                residueCount = exception.ResiduePaths.Count,
+            });
             if (residueManager is not null && exception.ResiduePaths.Count > 0)
             {
                 try
@@ -130,6 +138,13 @@ public sealed class CapturedCommandFinalizer(
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or OverflowException)
         {
+            CaptureCompletionDiagnostics.Write("retention-failure", Guid.Empty, candidate.Sequence, new
+            {
+                failureType = exception.GetType().Name,
+                hResult = exception.HResult,
+                commitOccurred = false,
+                residueCount = 0,
+            });
             return new FinalizationResult(FinalizationOutcome.Failed, false, [], null);
         }
     }

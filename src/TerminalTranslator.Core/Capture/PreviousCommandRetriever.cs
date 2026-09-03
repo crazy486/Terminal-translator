@@ -64,10 +64,13 @@ public static class PreviousCommandRetriever
             selected.Sequence,
             selected.CommandText,
             selected.Output,
-            selected.Boundary.ExitCode,
+            selected.Boundary.NativeExitCode,
             selected.Boundary.WasInterrupted,
             selected.LocalCompleteness,
-            selected.OriginalOutputBytes);
+            selected.OriginalOutputBytes)
+        {
+            PowerShellSucceeded = selected.Boundary.PowerShellSucceeded,
+        };
         return PreviousCommandResult.Success(snapshot);
     }
 }

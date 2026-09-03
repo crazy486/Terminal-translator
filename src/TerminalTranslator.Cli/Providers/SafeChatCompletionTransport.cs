@@ -1,11 +1,18 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using TerminalTranslator.Cli.Configuration;
 using TerminalTranslator.Core.Translation;
 
 namespace TerminalTranslator.Cli.Providers;
+
+internal sealed record ProviderTransportResult(
+    ChatCompletionResponseDto Response,
+    HttpStatusCode StatusCode,
+    long ResponseHeadersElapsedMilliseconds,
+    long ResponseCompletedElapsedMilliseconds);
 
 internal sealed class SafeChatCompletionTransport
 {
@@ -26,7 +33,7 @@ internal sealed class SafeChatCompletionTransport
         _client.DefaultRequestHeaders.Remove("Cookie2");
     }
 
-    public async Task<ChatCompletionResponseDto> SendAsync(
+    public async Task<ProviderTransportResult> SendAsync(
         ChatCompletionRequestDto payload,
         TimeSpan deadline,
         CancellationToken cancellationToken)
@@ -35,7 +42,9 @@ internal sealed class SafeChatCompletionTransport
         string? credential = _environmentVariableReader(_settings.ApiKeyEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(credential))
         {
-            throw new TranslationProviderException(TranslationErrorCode.Authentication);
+            throw new TranslationProviderException(
+                TranslationErrorCode.Authentication,
+                new TranslationProviderFailureDetails(TranslationProviderFailureSource.Authentication));
         }
 
         string json = JsonSerializer.Serialize(payload, ProviderJsonContext.Default.ChatCompletionRequestDto);
@@ -52,24 +61,45 @@ internal sealed class SafeChatCompletionTransport
         timeoutSource.CancelAfter(timeout);
 
         HttpResponseMessage response;
+        Stopwatch requestTimer = Stopwatch.StartNew();
         try
         {
             response = await _client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeoutSource.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TranslationProviderException(TranslationErrorCode.Timeout);
+            throw TimeoutFailure(requestTimer.ElapsedMilliseconds, exception, timeoutSource.IsCancellationRequested);
         }
         catch (HttpRequestException exception)
         {
-            throw new TranslationProviderException(TranslationErrorCode.Unavailable, exception);
+            throw new TranslationProviderException(
+                TranslationErrorCode.Unavailable,
+                new(
+                    TranslationProviderFailureSource.Network,
+                    ResponseCompletedElapsedMilliseconds: requestTimer.ElapsedMilliseconds,
+                    ExceptionType: exception.GetType().FullName),
+                exception);
+        }
+        catch (TimeoutException exception)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                throw new OperationCanceledException("The provider request was canceled by the caller.", exception, cancellationToken);
+            throw TimeoutFailure(requestTimer.ElapsedMilliseconds, exception, timeoutSource.IsCancellationRequested);
         }
 
         using (response)
         {
+            long headersElapsedMilliseconds = requestTimer.ElapsedMilliseconds;
             if (!response.IsSuccessStatusCode)
             {
-                throw new TranslationProviderException(MapStatus(response.StatusCode));
+                TranslationErrorCode code = MapStatus(response.StatusCode);
+                throw new TranslationProviderException(
+                    code,
+                    new TranslationProviderFailureDetails(
+                        FailureSourceFor(code),
+                        (int)response.StatusCode,
+                        headersElapsedMilliseconds,
+                        requestTimer.ElapsedMilliseconds));
             }
 
             byte[] bytes;
@@ -77,30 +107,115 @@ internal sealed class SafeChatCompletionTransport
             {
                 bytes = await ReadBoundedResponseAsync(response.Content, timeoutSource.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (TranslationProviderException exception) when (exception.Code == TranslationErrorCode.InvalidResponse)
             {
-                throw new TranslationProviderException(TranslationErrorCode.Timeout);
+                throw MalformedResponseFailure(
+                    response.StatusCode,
+                    headersElapsedMilliseconds,
+                    requestTimer.ElapsedMilliseconds,
+                    exception,
+                    "response-too-large");
+            }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw TimeoutFailure(
+                    requestTimer.ElapsedMilliseconds,
+                    exception,
+                    timeoutSource.IsCancellationRequested,
+                    (int)response.StatusCode,
+                    headersElapsedMilliseconds);
             }
             catch (HttpRequestException exception)
             {
-                throw new TranslationProviderException(TranslationErrorCode.Unavailable, exception);
+                throw ResponseReadFailure(exception, response.StatusCode, headersElapsedMilliseconds, requestTimer.ElapsedMilliseconds);
             }
             catch (IOException exception)
             {
-                throw new TranslationProviderException(TranslationErrorCode.Unavailable, exception);
+                throw ResponseReadFailure(exception, response.StatusCode, headersElapsedMilliseconds, requestTimer.ElapsedMilliseconds);
             }
 
             try
             {
-                return JsonSerializer.Deserialize(bytes, ProviderJsonContext.Default.ChatCompletionResponseDto)
-                    ?? throw new TranslationProviderException(TranslationErrorCode.InvalidResponse);
+                ChatCompletionResponseDto parsed = JsonSerializer.Deserialize(bytes, ProviderJsonContext.Default.ChatCompletionResponseDto)
+                    ?? throw MalformedResponseFailure(
+                        response.StatusCode,
+                        headersElapsedMilliseconds,
+                        requestTimer.ElapsedMilliseconds,
+                        malformedResponseReason: "outer-json-invalid");
+                return new(
+                    parsed,
+                    response.StatusCode,
+                    headersElapsedMilliseconds,
+                    requestTimer.ElapsedMilliseconds);
             }
             catch (JsonException exception)
             {
-                throw new TranslationProviderException(TranslationErrorCode.InvalidResponse, exception);
+                throw MalformedResponseFailure(
+                    response.StatusCode,
+                    headersElapsedMilliseconds,
+                    requestTimer.ElapsedMilliseconds,
+                    exception,
+                    "outer-json-invalid");
             }
         }
     }
+
+    private static TranslationProviderFailureSource FailureSourceFor(TranslationErrorCode code) => code switch
+    {
+        TranslationErrorCode.Authentication => TranslationProviderFailureSource.Authentication,
+        TranslationErrorCode.RateLimited => TranslationProviderFailureSource.RateLimit,
+        _ => TranslationProviderFailureSource.HttpStatus,
+    };
+
+    private static TranslationProviderException TimeoutFailure(
+        long completedElapsedMilliseconds,
+        Exception exception,
+        bool transportTimeoutTriggered,
+        int? statusCode = null,
+        long? headersElapsedMilliseconds = null) =>
+        new(
+            TranslationErrorCode.Timeout,
+            new(
+                TranslationProviderFailureSource.Timeout,
+                statusCode,
+                headersElapsedMilliseconds,
+                completedElapsedMilliseconds,
+                exception.GetType().FullName,
+                "provider-timeout",
+                transportTimeoutTriggered ? "transport-cancel-after" : "http-client-or-handler"),
+            exception);
+
+    private static TranslationProviderException ResponseReadFailure(
+        Exception exception,
+        HttpStatusCode statusCode,
+        long headersElapsedMilliseconds,
+        long completedElapsedMilliseconds) =>
+        new(
+            TranslationErrorCode.Unavailable,
+            new(
+                TranslationProviderFailureSource.Network,
+                (int)statusCode,
+                headersElapsedMilliseconds,
+                completedElapsedMilliseconds,
+                exception.GetType().FullName),
+            exception);
+
+    private static TranslationProviderException MalformedResponseFailure(
+        HttpStatusCode statusCode,
+        long headersElapsedMilliseconds,
+        long completedElapsedMilliseconds,
+        Exception? exception = null,
+        string malformedResponseReason = "outer-json-invalid") =>
+        new(
+            TranslationErrorCode.InvalidResponse,
+            new(
+                TranslationProviderFailureSource.MalformedResponse,
+                (int)statusCode,
+                headersElapsedMilliseconds,
+                completedElapsedMilliseconds,
+                exception?.GetType().FullName,
+                MalformedResponseReason: malformedResponseReason),
+            exception);
 
     private static TranslationErrorCode MapStatus(HttpStatusCode statusCode) => statusCode switch
     {

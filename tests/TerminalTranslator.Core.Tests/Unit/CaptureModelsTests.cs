@@ -49,6 +49,18 @@ public sealed class CaptureModelsTests
     }
 
     [TestMethod]
+    public void TerminationMetadata_SeparatesPowerShellSuccessFromNativeExitOwnership()
+    {
+        CommandBoundary cmdlet = new(Session, 1, "Write-Output SUCCESS", true, null, false, powerShellSucceeded: true);
+        Assert.IsTrue(cmdlet.PowerShellSucceeded);
+        Assert.IsNull(cmdlet.NativeExitCode);
+
+        CommandBoundary native = new(Session, 2, "cmd /c exit 5", true, 5, false, powerShellSucceeded: false);
+        Assert.IsFalse(native.PowerShellSucceeded);
+        Assert.AreEqual(5, native.NativeExitCode);
+    }
+
+    [TestMethod]
     public void RetrievalOutcome_HasExclusiveKindsAndNeverCarriesSnapshotOnFailure()
     {
         PreviousCommandResult noOutput = PreviousCommandResult.NoOutput();

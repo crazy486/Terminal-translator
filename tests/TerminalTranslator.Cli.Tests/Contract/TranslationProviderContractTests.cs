@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using TerminalTranslator.Cli.Configuration;
 using TerminalTranslator.Cli.Providers;
 using TerminalTranslator.Cli.Tests.TestDoubles;
@@ -37,7 +38,15 @@ public sealed class TranslationProviderContractTests
         Assert.AreEqual("\u64cd\u4f5c\u5df2\u5b8c\u6210\u3002", result.TranslatedText);
         Assert.AreEqual("req-1", result.ProviderRequestId);
         StringAssert.Contains(body!, "Operation completed.");
-        StringAssert.Contains(body!, "test-model");
+        using JsonDocument serialized = JsonDocument.Parse(body!);
+        JsonElement root = serialized.RootElement;
+        Assert.AreEqual("test-model", root.GetProperty("model").GetString());
+        Assert.AreEqual(0d, root.GetProperty("temperature").GetDouble());
+        Assert.AreEqual("disabled", root.GetProperty("thinking").GetProperty("type").GetString());
+        Assert.IsFalse(root.TryGetProperty("response_format", out _), "The plain-text translation contract must not request JSON Output.");
+        foreach (string omitted in new[] { "reasoning_effort", "max_tokens", "stream" })
+            Assert.IsFalse(root.TryGetProperty(omitted, out _), $"{omitted} must remain omitted in the production profile.");
+        Assert.AreEqual(4, root.EnumerateObject().Count());
         Assert.AreEqual(1, handler.Requests.Count);
     }
 

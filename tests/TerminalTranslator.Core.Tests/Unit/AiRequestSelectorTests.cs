@@ -35,6 +35,16 @@ public sealed class AiRequestSelectorTests
         Assert.IsGreaterThan(Encoding.UTF8.GetByteCount(request.CommandText), required);
     }
 
+    [TestMethod]
+    public void Select_PreservesNaturalEnglishNativeStdoutAndStderrTogether()
+    {
+        const string output = "The native command completed successfully.\nThe native command reported a recoverable warning.";
+        AiSelectionResult selected = AiRequestSelector.Select(Request(output), AiInputBudgetPolicy.V1Default);
+        Assert.IsTrue(selected.Supported);
+        Assert.AreEqual(output, selected.Request!.SelectedOutput);
+        Assert.AreEqual(AiInputCompleteness.Complete, selected.Request.AiCompleteness);
+    }
+
     private static AssistanceRequest Request(string output) => AssistanceRequest.CreateLastTranslation(
         "dotnet build --no-restore", output, new TerminationFacts(1, true),
         LocalCaptureCompleteness.Complete, Encoding.UTF8.GetByteCount(output));

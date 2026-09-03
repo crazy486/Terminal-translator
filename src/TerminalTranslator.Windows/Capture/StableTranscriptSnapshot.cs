@@ -44,6 +44,7 @@ public static class StableTranscriptSnapshot
         string path,
         TimeSpan timeout,
         TimeSpan? retryDelay = null,
+        Func<bool>? producerCompleted = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(path) || timeout < TimeSpan.Zero)
@@ -52,9 +53,23 @@ public static class StableTranscriptSnapshot
         }
 
         TimeSpan delay = retryDelay ?? TimeSpan.FromMilliseconds(15);
+        producerCompleted ??= static () => true;
         Stopwatch stopwatch = Stopwatch.StartNew();
+        // An exclusive read proves only that no writer owns the file at this instant. PowerShell
+        // can schedule its pending transcript drain asynchronously, leaving a readable gap before
+        // the writer opens the file. Treat the first image as an observation and finalize only
+        // after a second exclusive observation proves identical length and content.
+        StableTranscriptSnapshotResult? previousObservation = null;
         do
         {
+            if (!producerCompleted())
+            {
+                previousObservation = null;
+                if (!await DelayForRetryAsync(delay, cancellationToken).ConfigureAwait(false))
+                    return StableTranscriptSnapshotResult.Unavailable();
+                continue;
+            }
+
             try
             {
                 await using FileStream stream = new(
@@ -77,16 +92,27 @@ public static class StableTranscriptSnapshot
                         smallContent?.Write(buffer, 0, read);
                     }
 
-                    if (stream.Length != initialLength || stream.Position != initialLength)
+                    if (stream.Length != initialLength || stream.Position != initialLength || !producerCompleted())
                     {
-                        return StableTranscriptSnapshotResult.Unavailable();
+                        previousObservation = null;
+                        continue;
                     }
 
-                    return new StableTranscriptSnapshotResult(
+                    StableTranscriptSnapshotResult observation = new(
                         true,
                         initialLength,
                         hash.GetHashAndReset(),
                         smallContent?.ToArray());
+                    if (previousObservation is not null &&
+                        previousObservation.Length == observation.Length &&
+                        previousObservation.Sha256 is not null &&
+                        observation.Sha256 is not null &&
+                        CryptographicOperations.FixedTimeEquals(previousObservation.Sha256, observation.Sha256))
+                    {
+                        return observation;
+                    }
+
+                    previousObservation = observation;
                 }
                 finally
                 {
@@ -95,23 +121,31 @@ public static class StableTranscriptSnapshot
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FileNotFoundException or DirectoryNotFoundException)
             {
+                previousObservation = null;
                 if (stopwatch.Elapsed >= timeout)
                 {
                     return StableTranscriptSnapshotResult.Unavailable();
                 }
             }
 
-            try
-            {
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
+            if (!await DelayForRetryAsync(delay, cancellationToken).ConfigureAwait(false))
                 return StableTranscriptSnapshotResult.Unavailable();
-            }
         }
         while (stopwatch.Elapsed < timeout);
 
         return StableTranscriptSnapshotResult.Unavailable();
+    }
+
+    private static async Task<bool> DelayForRetryAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
     }
 }

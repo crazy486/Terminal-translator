@@ -377,6 +377,191 @@ real acceptance cover the remaining risk.
 - Treat PIPE-only cycling as final compatibility acceptance: rejected; it is feasibility evidence,
   not a replacement for real WT/PS5.1 validation.
 
+## R17. Windows PowerShell 5.1 native transcript completion
+
+**Decision**: Do not use an elapsed producer-quiet interval as completion proof. During a managed
+transcript interval, set Windows PowerShell 5.1's internal `ConsoleVisibility.AlwaysCaptureApplicationIO`
+mode so `NativeCommandProcessor` redirects native stdout/stderr through its reader threads and joins
+those threads before the pipeline completes. At the next prompt, restore the host's prior mode, run
+two synchronous `TranscribePipelineComplete` + `FlushContentToDisk` passes, and require both
+`OutputToLog` and `OutputBeingLogged` to be empty with unchanged staging length before Stop. Validate
+the stopped file again before immutable publication. If reflection or any structural signal is
+unavailable, fail capture closed rather than falling back to a delay or console scrape.
+
+Installed PowerShell 5.1 (`5.1.26100.9168`) evidence rejected the original late-enqueue theory. A
+failed sequence observed 51.24 ms of empty transcript queues, no staging growth at 5/20/50 ms after
+Stop, and a stable published snapshot, yet stdout was already absent before Stop. Runtime inspection
+showed the default direct-console path waits for the process and then scrapes `RawUI.GetBufferContents`;
+at the finite buffer bottom, its cursor-wrap test can select only the blank final row. The queues being
+observed belong to transcript writing and cannot prove completion of that separate console scrape.
+
+Native file redirection remains file-only. The captured-I/O path makes PowerShell transcribe an
+internal `ParameterBinding(Out-File)` record; it is removed only when the command AST proves a native
+file redirection, preserving identical user-authored output otherwise.
+
+**Rationale**: PowerShell 5.1 provides no deterministic public transcription-completion event. The
+joined native-reader lifecycle is the strongest available producer signal, and combining it with
+two synchronous queue/content checks plus stopped-snapshot validation closes each independently
+observable stage. It fixes the source that lost bytes instead of extending a probabilistic delay.
+
+**Alternatives considered**:
+
+- Increase 50 ms to a larger quiet constant: rejected because empty transcript queues do not cover
+  the native console-buffer producer and the reproduced loss had no late activity.
+- Read `CONOUT$` or add a console-buffer fallback: rejected by the accepted capture architecture and
+  would retain the same finite-buffer ambiguity.
+- Treat Stop-Transcript or post-Stop stability alone as completion: rejected because the reproduced
+  staging file was already incomplete before Stop and remained stable afterward.
+
+## R18. Selective joined-reader capture with TTY preservation
+
+**Decision**: Preserve PSReadLine's current `AddToHistoryHandler` and compose it with a small managed
+delegate. In PSReadLine 2.0 the hook runs after acceptance but before `ReadLine` returns the command
+for execution, which selects the child-handle architecture without replacing Enter or validation
+bindings and without running a PowerShell scriptblock inside PSReadLine's callback. Enable
+the T133 joined application-I/O reader only when an accepted command line proves a direct capture-safe
+native invocation. Known TUI, pager, remote-shell, and
+interactive-runtime families (including `codex`) keep the original console mode, so the child
+inherits genuine stdin/stdout/stderr console handles. Unknown or indirect invocations default to
+TTY preservation.
+
+PSReadLine 2.0 also invokes the history handler while loading its history file. The managed delegate
+reads PSReadLine's one-time-initialization state and skips those callbacks. The last persisted history
+command is decoded once at registration, and the last accepted classification is reapplied after transcript
+rotation. This preserves classification for an immediately repeated command even though PSReadLine
+can suppress the handler for consecutive duplicate history entries.
+
+The classifier is syntax/name based because Windows console executables do not advertise whether
+they will require terminal handles before process creation. It includes conditional rules for
+commands such as `cmd /c`, PowerShell `-Command`/`-File`, and interpreter eval modes; a bounded
+application-name override supports additional TTY-sensitive tools without changing provider or
+previous-command selection behavior. Native file redirection remains AST-proven and file-only.
+
+**Rationale**: T133 enabled the internal mode for the whole transcript interval, before the next
+native child was created. That reliably joined stdout/stderr readers but replaced the child's output
+console handles with pipes, causing Codex to report stdout/stderr as non-terminals. A pre-execution
+decision is the last deterministic point before `NativeCommandProcessor` creates the process and can
+therefore preserve both properties. Post-launch repair cannot replace inherited handles safely.
+
+**Alternatives considered**:
+
+- Globally disable `AlwaysCaptureApplicationIO`: rejected because it reopens T133's finite-console-
+  buffer capture race for ordinary native commands.
+- Add a delay at prompt completion: rejected because queue quietness does not repair the handles
+  inherited by an already-created TUI process and does not cover the console scrape producer.
+- Detect TTY use after process launch: rejected because stdin/stdout/stderr inheritance has already
+  occurred before the application can call `GetConsoleMode`/`isatty`.
+- Bind Enter to `ValidateAndAcceptLine` or a scriptblock wrapper around `AcceptLine`: rejected after
+  the existing single-Ctrl+C probe showed both Enter-binding changes were not behaviorally transparent.
+  The initially observed thousands of `AddToHistoryHandler` calls were traced to PSReadLine 2.0's
+  one-time history-file load, not per-keystroke execution. A PowerShell history-handler scriptblock
+  was also rejected after repeated probes exposed intermittent Ctrl+C loss; the managed delegate skips
+  initialization callbacks, preserves accepted-line timing, and restores the prior handler on disable.
+- Make every unknown command capture-safe: rejected because an unknown interactive program must keep
+  the pre-T133 terminal behavior unless it is explicitly classified.
+
+## T135 assistance-provider reliability boundary
+
+**Decision**: Keep the configured ten-second provider limit and make the transport-linked
+`CancelAfter` token the sole production timeout authority by setting the shared production
+`HttpClient.Timeout` to infinite. Start that budget immediately before `SendAsync`, after capture,
+selection, authorization, serialization, and spinner setup. Preserve provider failure source and
+content-free request telemetry through the adapter: endpoint, model, HTTP status, request-start UTC,
+response-header and completion latency, exception type, cancellation reason, and timeout source.
+Detailed diagnostics are opt-in through `TT_PROVIDER_DIAGNOSTICS=1` and never contain request,
+capture, response, or credential content.
+
+**Rationale**: The two original user messages were renderer projections of only `ProviderError` and
+`ProviderTimeout`. The former combined DNS/TLS/socket failures, HTTP failures, authentication,
+rate-limiting, and malformed JSON, so the historical first failure cannot be reconstructed from the
+old output. A content-safe live probe against the configured DeepSeek endpoint completed once with
+HTTP 200 in 6.676 seconds and a following probe failed to complete within the probe's 30-second
+observation boundary, establishing variable external latency but not a retryable status for the
+original call. Retrying a chat-completion POST after a timeout can duplicate billable work whose
+response was merely lost, and splitting the unchanged ten-second budget would reject observed valid
+responses. No automatic retry is therefore added without status-specific production evidence.
+
+**Alternatives considered**:
+
+- Increase the provider timeout: rejected because it masks the observed boundary and violates T135.
+- Retry every timeout/unavailable result: rejected because the original failure source was discarded,
+  timeout completion is ambiguous, duplicate provider work is possible, and total latency would grow.
+- Emit raw exception messages or response bodies: rejected because they can include destination or
+  user/provider content and would pollute the normal command UX.
+- Rework capture or T134 application-I/O classification: rejected because deterministic capture-to-
+  selection tests preserve both smoke outputs exactly and the provider failure messages are reachable
+  only after reliable retrieval, English eligibility, request selection, and authorization.
+
+### T135 installed-acceptance blocker follow-up
+
+The first T135 manual recipe inserted `$LASTEXITCODE` between each native command and `tt last`.
+That changes the strict previous command by design. Inspection of the real installed capture
+generation proved that the native stdout record was retained as 48 exact UTF-8 bytes with exit 5,
+followed by a one-byte `$LASTEXITCODE` record containing `5`; the stderr/error-record capture was
+retained as 827 bytes with exit 7, followed by a one-byte `$LASTEXITCODE` record containing `7`.
+`tt last` therefore evaluated the numeric command output and correctly returned no translatable
+English. T134's original reproduction invoked `tt last` immediately after the native command and did
+not create this intervening record.
+
+Do not weaken strict-previous selection or English eligibility to accommodate an acceptance probe.
+Instead, acceptance must observe `$LASTEXITCODE` only after `tt last`, or preserve it in a variable as
+part of the same submitted native-command line if needed. Add installed-loader coverage that runs the
+native stdout, native stderr, and managed-output cases with no intervening command and passes their
+real retained records through the production eligibility/selection policies with a fake provider.
+Numeric noise remains ineligible. When `TT_PROVIDER_DIAGNOSTICS=1`, emit additional aggregate-only
+pre-provider pipeline diagnostics so retrieval kind, byte/character counts, eligibility, and
+selection can be distinguished without exposing command or output text.
+
+## T136 provider request profile investigation
+
+**Decision**: Do not change the production request profile in T136. The audited assistance request
+serializes only `model`, two `messages`, and `temperature: 0`; it omits `thinking`,
+`reasoning_effort`, `max_tokens`, and `response_format`. For DeepSeek V4 this selects the provider's
+default thinking mode at high reasoning effort and uses text output rather than API JSON Output.
+
+A serial controlled benchmark on 2026-09-02 used the configured `deepseek-v4-flash` endpoint, five
+runs per primary profile/input cell, a 48-byte synthetic success message, and a 900-byte synthetic
+PowerShell/package-error payload. The current profile completed short input at median 3.648 seconds
+but timed out all five medium requests after HTTP 200 headers. Disabling thinking reduced medians to
+0.653 and 1.902 seconds with no timeout, while retaining only prompt-level JSON instruction caused
+frequent inner JSON parse failures. Adding API JSON Output to the non-thinking profile produced valid
+translation/recommendation JSON and aggregate quality signals in every tested request. Adding a
+1,024-token output bound did not show a further latency benefit in this small sample.
+
+The latency evidence strongly identifies default high-effort thinking as the main ten-second timeout
+source, and the malformed evidence independently identifies prompt-only JSON as an unreliable wire
+contract. A thinking-only production change would leave the tested non-thinking profile malformed in
+8 of 10 primary requests; a JSON-only change retained all three medium-input timeouts in the isolation
+sample. Applying both would mix two behavior variables, contrary to the single-variable investigation
+rule. Production therefore remains unchanged pending a separately approved request-contract change.
+Content-free diagnostics now distinguish `outer-json-invalid`, `inner-json-invalid`, `empty-content`,
+`missing-content`, `truncated/finish-length`, `schema-invalid`, and `response-too-large` without
+recording request or response content. Full evidence is in
+`validation/t136-provider-request-profile.md`.
+
+## T137 non-thinking structured provider profile
+
+**Decision**: Correct the production request contract with the two independently supported T136
+controls. The shared typed DTO now always carries `thinking: {"type":"disabled"}` for Terminal
+Translator's latency-sensitive translation and brief-assistance calls. The assistance adapter also
+carries `response_format: {"type":"json_object"}` because LastTranslation, QuestionOnly, and
+QuestionWithPreviousCommand all explicitly request JSON in their existing prompts and defensively
+parse a request-kind-specific JSON business schema. The Feature 001 live translation adapter returns
+plain translated text and therefore omits `response_format`.
+
+These controls solve separate demonstrated defects rather than forming an untested multi-variable
+optimization: disabling thinking removed the benchmark's latency/timeouts but prompt-only JSON was
+malformed in 8 of 10 non-thinking primary calls; API JSON Output removed the malformed responses,
+while JSON Output alone retained all three medium timeouts. Both are therefore required for the
+structured assistance contract. Existing JSON prompt wording remains unchanged because DeepSeek JSON
+Output also requires an explicit prompt instruction.
+
+`temperature: 0` remains explicit. `reasoning_effort`, `max_tokens`, and `stream` remain omitted.
+The 1,024-token experiment showed no latency advantage and did not establish safety for the complete
+product input range, so output-token bounding remains a separate follow-up. T135's ten-second single
+transport timeout authority, caller cancellation, no-retry policy, bounded response reading, and
+T136 malformed subtype/schema diagnostics remain unchanged.
+
 ## Resolution
 
 All implementation research questions required for Phase 1 are resolved. The amended retained-store

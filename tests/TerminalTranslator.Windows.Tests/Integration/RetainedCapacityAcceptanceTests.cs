@@ -77,6 +77,10 @@ public sealed class RetainedCapacityAcceptanceTests
         Assert.AreEqual("generate", snapshot.CommandText);
         Assert.AreEqual(77L, persisted.HistoryId);
         Assert.IsTrue(persisted.Boundary.IsReliable);
+        Assert.IsTrue(persisted.Boundary.PowerShellSucceeded);
+        Assert.AreEqual(0, persisted.Boundary.NativeExitCode);
+        Assert.IsTrue(snapshot.PowerShellSucceeded);
+        Assert.AreEqual(0, snapshot.NativeExitCode);
         Assert.IsTrue(snapshot.Output.StartsWith("HEAD-MARKER", StringComparison.Ordinal));
         Assert.IsTrue(snapshot.Output.EndsWith("TAIL-MARKER", StringComparison.Ordinal));
         Assert.IsLessThan(output.Length, snapshot.Output.Length);
@@ -116,7 +120,7 @@ public sealed class RetainedCapacityAcceptanceTests
 
     private static CapturedCommand Command(string output, long sequence, long historyId = 0)
     {
-        CommandBoundary boundary = new(Session, sequence, "generate", true, 0, false);
+        CommandBoundary boundary = new(Session, sequence, "generate", true, 0, false, powerShellSucceeded: true);
         return new(Session, sequence, "generate", output, boundary, LocalCaptureCompleteness.Complete,
             Encoding.UTF8.GetByteCount(output), false, historyId);
     }

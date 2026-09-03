@@ -13,6 +13,64 @@ namespace TerminalTranslator.Cli.Tests.Contract;
 public sealed class OnDemandProviderContractTests
 {
     [TestMethod]
+    public async Task StructuredProductionRequestProfile_SerializesNonThinkingJsonOutputContract()
+    {
+        List<string> bodies = [];
+        using HttpClient client = new(new TestHttpMessageHandler(async (request, _) =>
+        {
+            bodies.Add(await request.Content!.ReadAsStringAsync());
+            return bodies.Count == 1
+                ? Success("translated", "recommendation")
+                : SuccessAnswer("answer");
+        }));
+        ChatCompletionAssistanceProvider provider = Create(client);
+
+        await provider.CompleteAsync(
+            Authorize(AssistanceRequest.CreateLastTranslation(
+                "winget install Contoso.Tools",
+                "The package installation completed successfully.",
+                new TerminationFacts(0, false))),
+            CancellationToken.None);
+        await provider.CompleteAsync(
+            Authorize(AssistanceRequest.CreateQuestionOnly(
+                "What happened?",
+                ResponseLanguagePolicy.Select("What happened?"))),
+            CancellationToken.None);
+        await provider.CompleteAsync(
+            Authorize(AssistanceRequest.CreateQuestionWithPreviousCommand(
+                "What happened?",
+                ResponseLanguagePolicy.Select("What happened?"),
+                "winget install Contoso.Tools",
+                "The package installation failed.",
+                new TerminationFacts(1, false))),
+            CancellationToken.None);
+
+        Assert.HasCount(3, bodies);
+        foreach (string body in bodies)
+        {
+            using JsonDocument serialized = JsonDocument.Parse(body);
+            JsonElement root = serialized.RootElement;
+            Assert.AreEqual("model", root.GetProperty("model").GetString());
+            Assert.AreEqual(0d, root.GetProperty("temperature").GetDouble());
+            JsonElement.ArrayEnumerator messages = root.GetProperty("messages").EnumerateArray();
+            Assert.AreEqual(2, messages.Count());
+            Assert.AreEqual("system", root.GetProperty("messages")[0].GetProperty("role").GetString());
+            Assert.AreEqual("user", root.GetProperty("messages")[1].GetProperty("role").GetString());
+            Assert.AreEqual("disabled", root.GetProperty("thinking").GetProperty("type").GetString());
+            Assert.AreEqual("json_object", root.GetProperty("response_format").GetProperty("type").GetString());
+            foreach (string omitted in new[]
+            {
+                "reasoning_effort", "top_p", "max_tokens", "stream", "stop",
+                "presence_penalty", "frequency_penalty", "tools", "tool_choice", "n", "seed", "logprobs",
+            })
+            {
+                Assert.IsFalse(root.TryGetProperty(omitted, out _), $"{omitted} must remain omitted in the production profile.");
+            }
+            Assert.AreEqual(5, root.EnumerateObject().Count());
+        }
+    }
+
+    [TestMethod]
     public async Task QuestionOnly_IsStatelessQuestionScopedBoundedAndSuggestedCommandsRemainInert()
     {
         List<string> sent = [];
