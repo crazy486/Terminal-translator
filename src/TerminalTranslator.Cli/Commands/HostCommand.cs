@@ -133,7 +133,10 @@ public static class HostCommand
         {
             AllowAutoRedirect = false,
             UseCookies = false,
-        });
+        })
+        {
+            Timeout = Timeout.InfiniteTimeSpan,
+        };
 
         using CancellationTokenSource runtimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         TranslationSession? translationSession = null;
@@ -152,12 +155,16 @@ public static class HostCommand
             StatusAggregator statusAggregator = new(sessionId, clock);
 
             SecretDetector secretDetector = new();
+            IProviderRequestDiagnosticSink providerDiagnostics = JsonProviderRequestDiagnosticSink.Create(
+                error,
+                Environment.GetEnvironmentVariable);
             ChatCompletionTranslationProvider provider = new(
                 settings,
                 httpClient,
                 Environment.GetEnvironmentVariable,
                 secretDetector,
-                request => translationSession.IsAuthorized(request.SessionGeneration, settings.Fingerprint));
+                request => translationSession.IsAuthorized(request.SessionGeneration, settings.Fingerprint),
+                providerDiagnostics);
             SubmittedCommandTracker submittedCommands = new();
             await using ProductionTranslationPipeline pipeline =
                 ProductionRuntimeComposition.CreateTranslationPipeline(
